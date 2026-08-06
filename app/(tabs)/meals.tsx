@@ -12,8 +12,13 @@ import {
 
 import {
   addDateToExistingFoods,
+  addProfileToExistingFoods,
   getTodayDate,
+  loadActiveProfile,
   loadFoods,
+  ProfileId,
+  PROFILES,
+  saveActiveProfile,
   saveFoods,
 } from '@/services/storage';
 
@@ -30,6 +35,7 @@ type FoodItem = {
   fat: number;
   meal: MealType;
   date?: string;
+  profileId?: ProfileId;
 };
 
 const mealTypes: MealType[] = [
@@ -42,6 +48,9 @@ const mealTypes: MealType[] = [
 export default function MealsScreen() {
   const [foods, setFoods] = useState<FoodItem[]>([]);
   const [storageLoaded, setStorageLoaded] = useState(false);
+
+  const [activeProfile, setActiveProfile] =
+    useState<ProfileId>('zach');
 
   const [selectedDate, setSelectedDate] = useState(
     getTodayDate()
@@ -64,28 +73,38 @@ export default function MealsScreen() {
   const [fat, setFat] = useState('');
 
   useEffect(() => {
-    async function restoreFoods() {
+    async function restoreData() {
       try {
         /*
-         * This migrates foods created before we added dates.
-         * Existing undated foods are assigned to today instead
-         * of being deleted.
+         * Preserve foods created before dates were added.
          */
         await addDateToExistingFoods<FoodItem>();
 
+        /*
+         * Preserve foods created before profiles were added.
+         * Existing foods are assigned to Zach.
+         */
+        await addProfileToExistingFoods<FoodItem>();
+
         const savedFoods = await loadFoods<FoodItem>();
+        const savedProfile = await loadActiveProfile();
 
         if (savedFoods !== null) {
           setFoods(savedFoods);
         }
+
+        setActiveProfile(savedProfile);
       } catch (error) {
-        console.error('Unable to restore foods:', error);
+        console.error(
+          'Unable to restore meal data:',
+          error
+        );
       } finally {
         setStorageLoaded(true);
       }
     }
 
-    restoreFoods();
+    restoreData();
   }, []);
 
   useEffect(() => {
@@ -97,7 +116,10 @@ export default function MealsScreen() {
       try {
         await saveFoods(foods);
       } catch (error) {
-        console.error('Unable to save foods:', error);
+        console.error(
+          'Unable to save foods:',
+          error
+        );
       }
     }
 
@@ -105,14 +127,16 @@ export default function MealsScreen() {
   }, [foods, storageLoaded]);
 
   /*
-   * Only foods belonging to the selected day are displayed
-   * and included in the nutrition totals.
+   * Foods shown on the screen must match BOTH
+   * the selected profile and selected date.
    */
   const selectedDateFoods = useMemo(() => {
     return foods.filter(
-      (food) => food.date === selectedDate
+      (food) =>
+        food.date === selectedDate &&
+        food.profileId === activeProfile
     );
-  }, [foods, selectedDate]);
+  }, [foods, selectedDate, activeProfile]);
 
   const totalCalories = selectedDateFoods.reduce(
     (total, food) => total + food.calories,
@@ -136,6 +160,8 @@ export default function MealsScreen() {
 
   const isToday = selectedDate === getTodayDate();
 
+  const currentProfile = PROFILES[activeProfile];
+
   function resetForm() {
     setFoodName('');
     setServingSize('');
@@ -145,6 +171,30 @@ export default function MealsScreen() {
     setCarbs('');
     setFat('');
     setEditingFoodId(null);
+  }
+
+  async function changeProfile(profileId: ProfileId) {
+    if (profileId === activeProfile) {
+      return;
+    }
+
+    /*
+     * Close/reset an open food form before switching
+     * so food cannot accidentally be saved to another profile.
+     */
+    setModalVisible(false);
+    resetForm();
+
+    setActiveProfile(profileId);
+
+    try {
+      await saveActiveProfile(profileId);
+    } catch (error) {
+      console.error(
+        'Unable to save active profile:',
+        error
+      );
+    }
   }
 
   function openAddFood(meal: MealType) {
@@ -263,10 +313,6 @@ export default function MealsScreen() {
       return;
     }
 
-    /*
-     * When editing, preserve the original food's date.
-     * When adding, use whichever date the user is viewing.
-     */
     const existingFood = editingFoodId
       ? foods.find(
           (food) => food.id === editingFoodId
@@ -283,7 +329,14 @@ export default function MealsScreen() {
       carbs: parsedCarbs,
       fat: parsedFat,
       meal: selectedMeal,
+
+      /*
+       * Editing keeps the original date/profile.
+       * New foods use the currently selected date/profile.
+       */
       date: existingFood?.date ?? selectedDate,
+      profileId:
+        existingFood?.profileId ?? activeProfile,
     };
 
     if (editingFoodId) {
@@ -307,7 +360,7 @@ export default function MealsScreen() {
   function deleteFood(id: string) {
     Alert.alert(
       'Delete food?',
-      'This food will be removed from this day.',
+      `This food will be removed from ${currentProfile.name}'s log for this day.`,
       [
         {
           text: 'Cancel',
@@ -343,8 +396,62 @@ export default function MealsScreen() {
         </Text>
 
         <Text style={styles.subtitle}>
-          Track your daily nutrition.
+          Track daily nutrition separately for each profile.
         </Text>
+
+        <View style={styles.profileCard}>
+          <Text style={styles.profileLabel}>
+            ACTIVE PROFILE
+          </Text>
+
+          <View style={styles.profileSelector}>
+            <Pressable
+              style={[
+                styles.profileButton,
+                activeProfile === 'zach' &&
+                  styles.profileButtonActive,
+              ]}
+              onPress={() =>
+                changeProfile('zach')
+              }
+            >
+              <Text
+                style={[
+                  styles.profileButtonText,
+                  activeProfile === 'zach' &&
+                    styles.profileButtonTextActive,
+                ]}
+              >
+                Zach
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={[
+                styles.profileButton,
+                activeProfile === 'wife' &&
+                  styles.profileButtonActive,
+              ]}
+              onPress={() =>
+                changeProfile('wife')
+              }
+            >
+              <Text
+                style={[
+                  styles.profileButtonText,
+                  activeProfile === 'wife' &&
+                    styles.profileButtonTextActive,
+                ]}
+              >
+                Wife
+              </Text>
+            </Pressable>
+          </View>
+
+          <Text style={styles.profileStatus}>
+            Viewing {currentProfile.name}'s nutrition
+          </Text>
+        </View>
 
         <View style={styles.dateCard}>
           <Pressable
@@ -403,11 +510,15 @@ export default function MealsScreen() {
 
         <View style={styles.calorieCard}>
           <Text style={styles.summaryLabel}>
-            CALORIES LOGGED
+            {currentProfile.name.toUpperCase()} • CALORIES LOGGED
           </Text>
 
           <Text style={styles.calorieValue}>
             {totalCalories}
+          </Text>
+
+          <Text style={styles.calorieGoalText}>
+            Goal: {currentProfile.calorieGoal} calories
           </Text>
 
           <Text style={styles.calorieDateText}>
@@ -421,6 +532,7 @@ export default function MealsScreen() {
           <MacroCard
             label="Protein"
             value={`${totalProtein}g`}
+            goal={`${currentProfile.proteinGoal}g goal`}
           />
 
           <MacroCard
@@ -463,7 +575,7 @@ export default function MealsScreen() {
 
               {mealFoods.length === 0 ? (
                 <Text style={styles.emptyText}>
-                  Nothing logged
+                  Nothing logged for {currentProfile.name}
                 </Text>
               ) : (
                 mealFoods.map((food) => (
@@ -550,6 +662,10 @@ export default function MealsScreen() {
               : 'Add Food'}
           </Text>
 
+          <Text style={styles.modalProfile}>
+            {currentProfile.name}
+          </Text>
+
           <Text style={styles.modalMeal}>
             {selectedMeal}
           </Text>
@@ -619,7 +735,7 @@ export default function MealsScreen() {
             <Text style={styles.saveButtonText}>
               {editingFoodId
                 ? 'Save Changes'
-                : 'Save Food'}
+                : `Save Food for ${currentProfile.name}`}
             </Text>
           </Pressable>
 
@@ -640,11 +756,13 @@ export default function MealsScreen() {
 type MacroCardProps = {
   label: string;
   value: string;
+  goal?: string;
 };
 
 function MacroCard({
   label,
   value,
+  goal,
 }: MacroCardProps) {
   return (
     <View style={styles.macroCard}>
@@ -655,6 +773,12 @@ function MacroCard({
       <Text style={styles.macroValue}>
         {value}
       </Text>
+
+      {goal ? (
+        <Text style={styles.macroGoal}>
+          {goal}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -760,6 +884,58 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
 
+  profileCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 14,
+  },
+
+  profileLabel: {
+    color: '#557063',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1,
+    marginBottom: 10,
+  },
+
+  profileSelector: {
+    flexDirection: 'row',
+    backgroundColor: '#EDF1EF',
+    borderRadius: 14,
+    padding: 4,
+    gap: 4,
+  },
+
+  profileButton: {
+    flex: 1,
+    borderRadius: 11,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+
+  profileButtonActive: {
+    backgroundColor: '#2D6B48',
+  },
+
+  profileButtonText: {
+    color: '#557063',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+
+  profileButtonTextActive: {
+    color: '#FFFFFF',
+  },
+
+  profileStatus: {
+    color: '#6D7972',
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 10,
+  },
+
   dateCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 18,
@@ -847,6 +1023,13 @@ const styles = StyleSheet.create({
     marginTop: 5,
   },
 
+  calorieGoalText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+
   calorieDateText: {
     color: '#C8D6CE',
     fontSize: 12,
@@ -877,6 +1060,13 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '900',
     marginTop: 5,
+  },
+
+  macroGoal: {
+    color: '#557063',
+    fontSize: 9,
+    fontWeight: '700',
+    marginTop: 3,
   },
 
   mealCard: {
@@ -990,11 +1180,18 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
 
+  modalProfile: {
+    color: '#17211C',
+    fontSize: 18,
+    fontWeight: '900',
+    marginTop: 8,
+  },
+
   modalMeal: {
     color: '#2D6B48',
     fontSize: 16,
     fontWeight: '700',
-    marginTop: 5,
+    marginTop: 3,
   },
 
   modalDate: {
