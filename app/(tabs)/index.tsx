@@ -11,11 +11,13 @@ import {
 } from 'react-native';
 
 import {
+  addWorkout,
   getTodayDate,
   loadActiveProfile,
   loadFoods,
   ProfileId,
   PROFILES,
+  StoredWorkout,
 } from '@/services/storage';
 
 type WorkoutSet = {
@@ -103,12 +105,32 @@ const STARTING_EXERCISES: Exercise[] = [
   },
 ];
 
+function createFreshExercises(): Exercise[] {
+  const workoutId = Date.now();
+
+  return STARTING_EXERCISES.map(
+    (exercise, exerciseIndex) => ({
+      ...exercise,
+      sets: exercise.sets.map(
+        (workoutSet, setIndex) => ({
+          ...workoutSet,
+          id:
+            workoutId +
+            exerciseIndex * 100 +
+            setIndex,
+          completed: false,
+        })
+      ),
+    })
+  );
+}
+
 export default function HomeScreen() {
   const [screen, setScreen] =
     useState<'home' | 'workout' | 'summary'>('home');
 
   const [exercises, setExercises] =
-    useState<Exercise[]>(STARTING_EXERCISES);
+    useState<Exercise[]>(createFreshExercises());
 
   const [foods, setFoods] = useState<FoodItem[]>([]);
 
@@ -118,6 +140,9 @@ export default function HomeScreen() {
   const [workoutSeconds, setWorkoutSeconds] = useState(0);
   const [workoutRunning, setWorkoutRunning] = useState(false);
   const [restSeconds, setRestSeconds] = useState(0);
+
+  const [isSavingWorkout, setIsSavingWorkout] = useState(false);
+  const [workoutSaved, setWorkoutSaved] = useState(false);
 
   const loadDashboardFoods = useCallback(async () => {
     try {
@@ -184,7 +209,8 @@ export default function HomeScreen() {
 
   const totalSets = useMemo(() => {
     return exercises.reduce(
-      (total, exercise) => total + exercise.sets.length,
+      (total, exercise) =>
+        total + exercise.sets.length,
       0
     );
   }, [exercises]);
@@ -201,28 +227,46 @@ export default function HomeScreen() {
   }, [exercises]);
 
   const totalVolume = useMemo(() => {
-    return exercises.reduce((exerciseTotal, exercise) => {
-      const exerciseVolume = exercise.sets.reduce(
-        (setTotal, workoutSet) => {
-          if (!workoutSet.completed) {
-            return setTotal;
-          }
+    return exercises.reduce(
+      (exerciseTotal, exercise) => {
+        const exerciseVolume =
+          exercise.sets.reduce(
+            (setTotal, workoutSet) => {
+              if (!workoutSet.completed) {
+                return setTotal;
+              }
 
-          const weight = Number(workoutSet.weight) || 0;
-          const reps = Number(workoutSet.reps) || 0;
+              const weight =
+                Number(workoutSet.weight) || 0;
 
-          return setTotal + weight * reps;
-        },
-        0
-      );
+              const reps =
+                Number(workoutSet.reps) || 0;
 
-      return exerciseTotal + exerciseVolume;
-    }, 0);
+              return (
+                setTotal +
+                weight * reps
+              );
+            },
+            0
+          );
+
+        return exerciseTotal + exerciseVolume;
+      },
+      0
+    );
   }, [exercises]);
 
   function startWorkout() {
+    setExercises(createFreshExercises());
+
     setWorkoutSeconds(0);
+    setRestSeconds(0);
+
+    setWorkoutSaved(false);
+    setIsSavingWorkout(false);
+
     setWorkoutRunning(true);
+
     setScreen('workout');
   }
 
@@ -232,7 +276,8 @@ export default function HomeScreen() {
     field: 'weight' | 'reps',
     value: string
   ) {
-    const numericValue = value.replace(/[^0-9.]/g, '');
+    const numericValue =
+      value.replace(/[^0-9.]/g, '');
 
     setExercises((currentExercises) =>
       currentExercises.map((exercise) => {
@@ -242,22 +287,27 @@ export default function HomeScreen() {
 
         return {
           ...exercise,
-          sets: exercise.sets.map((workoutSet) => {
-            if (workoutSet.id !== setId) {
-              return workoutSet;
-            }
+          sets: exercise.sets.map(
+            (workoutSet) => {
+              if (workoutSet.id !== setId) {
+                return workoutSet;
+              }
 
-            return {
-              ...workoutSet,
-              [field]: numericValue,
-            };
-          }),
+              return {
+                ...workoutSet,
+                [field]: numericValue,
+              };
+            }
+          ),
         };
       })
     );
   }
 
-  function toggleSet(exerciseId: number, setId: number) {
+  function toggleSet(
+    exerciseId: number,
+    setId: number
+  ) {
     let wasCompleted = false;
 
     setExercises((currentExercises) =>
@@ -268,18 +318,22 @@ export default function HomeScreen() {
 
         return {
           ...exercise,
-          sets: exercise.sets.map((workoutSet) => {
-            if (workoutSet.id !== setId) {
-              return workoutSet;
+          sets: exercise.sets.map(
+            (workoutSet) => {
+              if (workoutSet.id !== setId) {
+                return workoutSet;
+              }
+
+              wasCompleted =
+                workoutSet.completed;
+
+              return {
+                ...workoutSet,
+                completed:
+                  !workoutSet.completed,
+              };
             }
-
-            wasCompleted = workoutSet.completed;
-
-            return {
-              ...workoutSet,
-              completed: !workoutSet.completed,
-            };
-          }),
+          ),
         };
       })
     );
@@ -297,10 +351,14 @@ export default function HomeScreen() {
         }
 
         const lastSet =
-          exercise.sets[exercise.sets.length - 1];
+          exercise.sets[
+            exercise.sets.length - 1
+          ];
 
         const newSet: WorkoutSet = {
-          id: Date.now(),
+          id:
+            Date.now() +
+            Math.floor(Math.random() * 1000),
           weight: lastSet?.weight ?? '',
           reps: lastSet?.reps ?? '',
           completed: false,
@@ -308,24 +366,93 @@ export default function HomeScreen() {
 
         return {
           ...exercise,
-          sets: [...exercise.sets, newSet],
+          sets: [
+            ...exercise.sets,
+            newSet,
+          ],
         };
       })
     );
   }
 
-  function finishWorkout() {
+  async function finishWorkout() {
     if (completedSets === 0) {
       Alert.alert(
         'No completed sets',
         'Complete at least one set before finishing the workout.'
       );
+
       return;
     }
 
+    if (
+      isSavingWorkout ||
+      workoutSaved
+    ) {
+      return;
+    }
+
+    setIsSavingWorkout(true);
     setWorkoutRunning(false);
     setRestSeconds(0);
-    setScreen('summary');
+
+    try {
+      const completedAt = new Date();
+
+      const workout: StoredWorkout = {
+        id: `${activeProfile}-${completedAt.getTime()}`,
+        profileId: activeProfile,
+        date: getTodayDate(),
+        completedAt:
+          completedAt.toISOString(),
+        workoutName: 'Push Day',
+        workoutType: 'Upper Body',
+        durationSeconds:
+          workoutSeconds,
+        completedSets,
+        totalSets,
+        totalVolume,
+
+        exercises: exercises.map(
+          (exercise) => ({
+            id: exercise.id,
+            name: exercise.name,
+            muscle: exercise.muscle,
+
+            sets: exercise.sets.map(
+              (workoutSet) => ({
+                id: workoutSet.id,
+                weight:
+                  workoutSet.weight,
+                reps: workoutSet.reps,
+                completed:
+                  workoutSet.completed,
+              })
+            ),
+          })
+        ),
+      };
+
+      await addWorkout(workout);
+
+      setWorkoutSaved(true);
+
+      setScreen('summary');
+    } catch (error) {
+      console.error(
+        'Unable to save workout:',
+        error
+      );
+
+      setWorkoutRunning(true);
+
+      Alert.alert(
+        'Workout not saved',
+        'There was a problem saving your workout. Please try again.'
+      );
+    } finally {
+      setIsSavingWorkout(false);
+    }
   }
 
   function returnHome() {
@@ -340,6 +467,7 @@ export default function HomeScreen() {
         restSeconds={restSeconds}
         completedSets={completedSets}
         totalSets={totalSets}
+        isSavingWorkout={isSavingWorkout}
         onUpdateSet={updateSet}
         onToggleSet={toggleSet}
         onAddSet={addSet}
@@ -349,8 +477,12 @@ export default function HomeScreen() {
           setRestSeconds(0);
           setScreen('home');
         }}
-        onStartRest={() => setRestSeconds(90)}
-        onStopRest={() => setRestSeconds(0)}
+        onStartRest={() =>
+          setRestSeconds(90)
+        }
+        onStopRest={() =>
+          setRestSeconds(0)
+        }
       />
     );
   }
@@ -358,6 +490,9 @@ export default function HomeScreen() {
   if (screen === 'summary') {
     return (
       <WorkoutSummary
+        profileName={
+          PROFILES[activeProfile].name
+        }
         completedSets={completedSets}
         totalSets={totalSets}
         totalVolume={totalVolume}
@@ -387,18 +522,24 @@ function HomeDashboard({
   activeProfile,
   onStartWorkout,
 }: HomeDashboardProps) {
-  const currentProfile = PROFILES[activeProfile];
+  const currentProfile =
+    PROFILES[activeProfile];
 
-  const calorieGoal = currentProfile.calorieGoal;
-  const proteinGoal = currentProfile.proteinGoal;
+  const calorieGoal =
+    currentProfile.calorieGoal;
+
+  const proteinGoal =
+    currentProfile.proteinGoal;
 
   const caloriesUsed = foods.reduce(
-    (total, food) => total + food.calories,
+    (total, food) =>
+      total + food.calories,
     0
   );
 
   const proteinUsed = foods.reduce(
-    (total, food) => total + food.protein,
+    (total, food) =>
+      total + food.protein,
     0
   );
 
@@ -410,31 +551,43 @@ function HomeDashboard({
   const calorieProgress =
     calorieGoal === 0
       ? 0
-      : Math.min(caloriesUsed / calorieGoal, 1);
+      : Math.min(
+          caloriesUsed / calorieGoal,
+          1
+        );
 
-  const breakfastFoods = foods.filter(
-    (food) => food.meal === 'Breakfast'
-  );
+  const breakfastFoods =
+    foods.filter(
+      (food) =>
+        food.meal === 'Breakfast'
+    );
 
-  const lunchFoods = foods.filter(
-    (food) => food.meal === 'Lunch'
-  );
+  const lunchFoods =
+    foods.filter(
+      (food) =>
+        food.meal === 'Lunch'
+    );
 
-  const dinnerFoods = foods.filter(
-    (food) => food.meal === 'Dinner'
-  );
+  const dinnerFoods =
+    foods.filter(
+      (food) =>
+        food.meal === 'Dinner'
+    );
 
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={
+        styles.content
+      }
     >
       <Text style={styles.smallHeading}>
         PARKER FITNESS
       </Text>
 
       <Text style={styles.title}>
-        Good morning, {currentProfile.name}
+        Good morning,{' '}
+        {currentProfile.name}
       </Text>
 
       <Text style={styles.subtitle}>
@@ -451,23 +604,33 @@ function HomeDashboard({
         </Text>
 
         <Text style={styles.cardText}>
-          {caloriesUsed.toLocaleString()} of{' '}
-          {calorieGoal.toLocaleString()} calories used
+          {caloriesUsed.toLocaleString()}{' '}
+          of{' '}
+          {calorieGoal.toLocaleString()}{' '}
+          calories used
         </Text>
 
-        <View style={styles.progressBackground}>
+        <View
+          style={
+            styles.progressBackground
+          }
+        >
           <View
             style={[
               styles.progressFill,
               {
-                width: `${calorieProgress * 100}%`,
+                width: `${
+                  calorieProgress * 100
+                }%`,
               },
             ]}
           />
         </View>
       </View>
 
-      <Text style={styles.sectionTitle}>
+      <Text
+        style={styles.sectionTitle}
+      >
         Daily goals
       </Text>
 
@@ -485,24 +648,37 @@ function HomeDashboard({
         />
       </View>
 
-      <Text style={styles.sectionTitle}>
+      <Text
+        style={styles.sectionTitle}
+      >
         Today's workout
       </Text>
 
       <View style={styles.whiteCard}>
-        <Text style={styles.workoutLabel}>
+        <Text
+          style={styles.workoutLabel}
+        >
           UPPER BODY
         </Text>
 
-        <Text style={styles.workoutTitle}>
+        <Text
+          style={styles.workoutTitle}
+        >
           Push Day
         </Text>
 
-        <Text style={styles.cardDescription}>
-          Chest press, shoulder press, triceps and core
+        <Text
+          style={styles.cardDescription}
+        >
+          Chest press, shoulder press,
+          triceps and core
         </Text>
 
-        <View style={styles.workoutDetailsRow}>
+        <View
+          style={
+            styles.workoutDetailsRow
+          }
+        >
           <WorkoutDetail
             value="5"
             label="Exercises"
@@ -522,17 +698,24 @@ function HomeDashboard({
         <Pressable
           style={({ pressed }) => [
             styles.startButton,
-            pressed && styles.buttonPressed,
+            pressed &&
+              styles.buttonPressed,
           ]}
           onPress={onStartWorkout}
         >
-          <Text style={styles.startButtonText}>
+          <Text
+            style={
+              styles.startButtonText
+            }
+          >
             Start workout
           </Text>
         </Pressable>
       </View>
 
-      <Text style={styles.sectionTitle}>
+      <Text
+        style={styles.sectionTitle}
+      >
         Meals
       </Text>
 
@@ -557,12 +740,18 @@ function HomeDashboard({
         />
       </View>
 
-      <Text style={styles.sectionTitle}>
+      <Text
+        style={styles.sectionTitle}
+      >
         Weekly progress
       </Text>
 
       <View style={styles.whiteCard}>
-        <Text style={styles.cardLabelDark}>
+        <Text
+          style={
+            styles.cardLabelDark
+          }
+        >
           CURRENT WEIGHT
         </Text>
 
@@ -588,19 +777,26 @@ function DashboardMealRow({
   foods,
 }: DashboardMealRowProps) {
   const calories = foods.reduce(
-    (total, food) => total + food.calories,
+    (total, food) =>
+      total + food.calories,
     0
   );
 
   const detail =
     foods.length === 0
       ? 'Not logged'
-      : foods.map((food) => food.name).join(', ');
+      : foods
+          .map(
+            (food) => food.name
+          )
+          .join(', ');
 
   return (
     <View style={styles.mealRow}>
       <View style={styles.mealInfo}>
-        <Text style={styles.mealTitle}>
+        <Text
+          style={styles.mealTitle}
+        >
           {title}
         </Text>
 
@@ -612,7 +808,9 @@ function DashboardMealRow({
         </Text>
       </View>
 
-      <Text style={styles.mealCalories}>
+      <Text
+        style={styles.mealCalories}
+      >
         {foods.length === 0
           ? '0 cal'
           : `${calories} cal`}
@@ -627,17 +825,24 @@ type WorkoutScreenProps = {
   restSeconds: number;
   completedSets: number;
   totalSets: number;
+  isSavingWorkout: boolean;
+
   onUpdateSet: (
     exerciseId: number,
     setId: number,
     field: 'weight' | 'reps',
     value: string
   ) => void;
+
   onToggleSet: (
     exerciseId: number,
     setId: number
   ) => void;
-  onAddSet: (exerciseId: number) => void;
+
+  onAddSet: (
+    exerciseId: number
+  ) => void;
+
   onFinishWorkout: () => void;
   onCancel: () => void;
   onStartRest: () => void;
@@ -650,6 +855,7 @@ function WorkoutScreen({
   restSeconds,
   completedSets,
   totalSets,
+  isSavingWorkout,
   onUpdateSet,
   onToggleSet,
   onAddSet,
@@ -662,18 +868,28 @@ function WorkoutScreen({
     totalSets === 0
       ? 0
       : Math.round(
-          (completedSets / totalSets) * 100
+          (completedSets /
+            totalSets) *
+            100
         );
 
   return (
     <View style={styles.screen}>
       <ScrollView
         style={styles.screen}
-        contentContainerStyle={styles.workoutContent}
+        contentContainerStyle={
+          styles.workoutContent
+        }
       >
-        <View style={styles.workoutHeader}>
+        <View
+          style={styles.workoutHeader}
+        >
           <View>
-            <Text style={styles.smallHeading}>
+            <Text
+              style={
+                styles.smallHeading
+              }
+            >
               PUSH DAY
             </Text>
 
@@ -682,36 +898,69 @@ function WorkoutScreen({
             </Text>
           </View>
 
-          <Pressable onPress={onCancel}>
-            <Text style={styles.cancelText}>
+          <Pressable
+            onPress={onCancel}
+            disabled={
+              isSavingWorkout
+            }
+          >
+            <Text
+              style={styles.cancelText}
+            >
               Exit
             </Text>
           </Pressable>
         </View>
 
-        <View style={styles.workoutStatusCard}>
+        <View
+          style={
+            styles.workoutStatusCard
+          }
+        >
           <View>
-            <Text style={styles.statusLabel}>
+            <Text
+              style={
+                styles.statusLabel
+              }
+            >
               WORKOUT TIME
             </Text>
 
-            <Text style={styles.statusValue}>
-              {formatTime(workoutSeconds)}
+            <Text
+              style={
+                styles.statusValue
+              }
+            >
+              {formatTime(
+                workoutSeconds
+              )}
             </Text>
           </View>
 
-          <View style={styles.statusRight}>
-            <Text style={styles.statusLabel}>
+          <View
+            style={styles.statusRight}
+          >
+            <Text
+              style={
+                styles.statusLabel
+              }
+            >
               PROGRESS
             </Text>
 
-            <Text style={styles.statusValue}>
+            <Text
+              style={
+                styles.statusValue
+              }
+            >
               {progress}%
             </Text>
           </View>
 
           <View
-            style={styles.workoutProgressBackground}
+            style={
+              styles.workoutProgressBackground
+            }
           >
             <View
               style={[
@@ -723,51 +972,90 @@ function WorkoutScreen({
             />
           </View>
 
-          <Text style={styles.setProgressText}>
-            {completedSets} of {totalSets} sets completed
+          <Text
+            style={
+              styles.setProgressText
+            }
+          >
+            {completedSets} of{' '}
+            {totalSets} sets completed
           </Text>
         </View>
 
         {restSeconds > 0 ? (
-          <View style={styles.restCard}>
+          <View
+            style={styles.restCard}
+          >
             <View>
-              <Text style={styles.restLabel}>
+              <Text
+                style={
+                  styles.restLabel
+                }
+              >
                 REST TIMER
               </Text>
 
-              <Text style={styles.restTime}>
-                {formatTime(restSeconds)}
+              <Text
+                style={
+                  styles.restTime
+                }
+              >
+                {formatTime(
+                  restSeconds
+                )}
               </Text>
             </View>
 
             <Pressable
-              style={styles.restButton}
+              style={
+                styles.restButton
+              }
               onPress={onStopRest}
             >
-              <Text style={styles.restButtonText}>
+              <Text
+                style={
+                  styles.restButtonText
+                }
+              >
                 Skip rest
               </Text>
             </Pressable>
           </View>
         ) : (
           <Pressable
-            style={styles.manualRestButton}
+            style={
+              styles.manualRestButton
+            }
             onPress={onStartRest}
           >
-            <Text style={styles.manualRestButtonText}>
-              Start 90-second rest timer
+            <Text
+              style={
+                styles.manualRestButtonText
+              }
+            >
+              Start 90-second rest
+              timer
             </Text>
           </Pressable>
         )}
 
         {exercises.map(
-          (exercise, exerciseIndex) => (
+          (
+            exercise,
+            exerciseIndex
+          ) => (
             <ExerciseCard
-              key={exercise.id}
+              key={`${exercise.id}-${exercise.sets[0]?.id ?? 0}`}
               exercise={exercise}
-              exerciseNumber={exerciseIndex + 1}
-              onUpdateSet={onUpdateSet}
-              onToggleSet={onToggleSet}
+              exerciseNumber={
+                exerciseIndex + 1
+              }
+              onUpdateSet={
+                onUpdateSet
+              }
+              onToggleSet={
+                onToggleSet
+              }
               onAddSet={onAddSet}
             />
           )
@@ -776,12 +1064,24 @@ function WorkoutScreen({
         <Pressable
           style={({ pressed }) => [
             styles.finishButton,
-            pressed && styles.buttonPressed,
+            pressed &&
+              styles.buttonPressed,
+            isSavingWorkout &&
+              styles.disabledButton,
           ]}
           onPress={onFinishWorkout}
+          disabled={
+            isSavingWorkout
+          }
         >
-          <Text style={styles.finishButtonText}>
-            Finish workout
+          <Text
+            style={
+              styles.finishButtonText
+            }
+          >
+            {isSavingWorkout
+              ? 'Saving workout...'
+              : 'Finish workout'}
           </Text>
         </Pressable>
       </ScrollView>
@@ -792,17 +1092,22 @@ function WorkoutScreen({
 type ExerciseCardProps = {
   exercise: Exercise;
   exerciseNumber: number;
+
   onUpdateSet: (
     exerciseId: number,
     setId: number,
     field: 'weight' | 'reps',
     value: string
   ) => void;
+
   onToggleSet: (
     exerciseId: number,
     setId: number
   ) => void;
-  onAddSet: (exerciseId: number) => void;
+
+  onAddSet: (
+    exerciseId: number
+  ) => void;
 };
 
 function ExerciseCard({
@@ -813,36 +1118,65 @@ function ExerciseCard({
   onAddSet,
 }: ExerciseCardProps) {
   return (
-    <View style={styles.exerciseCard}>
-      <Text style={styles.exerciseMuscle}>
+    <View
+      style={styles.exerciseCard}
+    >
+      <Text
+        style={
+          styles.exerciseMuscle
+        }
+      >
         {exerciseNumber}.{' '}
         {exercise.muscle.toUpperCase()}
       </Text>
 
-      <Text style={styles.exerciseName}>
+      <Text
+        style={styles.exerciseName}
+      >
         {exercise.name}
       </Text>
 
-      <View style={styles.setHeaderRow}>
-        <Text style={styles.setHeaderNumber}>
+      <View
+        style={styles.setHeaderRow}
+      >
+        <Text
+          style={
+            styles.setHeaderNumber
+          }
+        >
           SET
         </Text>
 
-        <Text style={styles.setHeaderInput}>
+        <Text
+          style={
+            styles.setHeaderInput
+          }
+        >
           WEIGHT
         </Text>
 
-        <Text style={styles.setHeaderInput}>
+        <Text
+          style={
+            styles.setHeaderInput
+          }
+        >
           REPS
         </Text>
 
-        <Text style={styles.setHeaderDone}>
+        <Text
+          style={
+            styles.setHeaderDone
+          }
+        >
           DONE
         </Text>
       </View>
 
       {exercise.sets.map(
-        (workoutSet, index) => (
+        (
+          workoutSet,
+          index
+        ) => (
           <View
             key={workoutSet.id}
             style={[
@@ -851,15 +1185,25 @@ function ExerciseCard({
                 styles.completedSetRow,
             ]}
           >
-            <View style={styles.setNumberCircle}>
-              <Text style={styles.setNumberText}>
+            <View
+              style={
+                styles.setNumberCircle
+              }
+            >
+              <Text
+                style={
+                  styles.setNumberText
+                }
+              >
                 {index + 1}
               </Text>
             </View>
 
             <TextInput
               style={styles.setInput}
-              value={workoutSet.weight}
+              value={
+                workoutSet.weight
+              }
               onChangeText={(value) =>
                 onUpdateSet(
                   exercise.id,
@@ -875,7 +1219,9 @@ function ExerciseCard({
 
             <TextInput
               style={styles.setInput}
-              value={workoutSet.reps}
+              value={
+                workoutSet.reps
+              }
               onChangeText={(value) =>
                 onUpdateSet(
                   exercise.id,
@@ -909,7 +1255,9 @@ function ExerciseCard({
                     styles.checkTextCompleted,
                 ]}
               >
-                {workoutSet.completed ? '✓' : ''}
+                {workoutSet.completed
+                  ? '✓'
+                  : ''}
               </Text>
             </Pressable>
           </View>
@@ -918,9 +1266,15 @@ function ExerciseCard({
 
       <Pressable
         style={styles.addSetButton}
-        onPress={() => onAddSet(exercise.id)}
+        onPress={() =>
+          onAddSet(exercise.id)
+        }
       >
-        <Text style={styles.addSetButtonText}>
+        <Text
+          style={
+            styles.addSetButtonText
+          }
+        >
           + Add set
         </Text>
       </Pressable>
@@ -929,6 +1283,7 @@ function ExerciseCard({
 }
 
 type WorkoutSummaryProps = {
+  profileName: string;
   completedSets: number;
   totalSets: number;
   totalVolume: number;
@@ -937,6 +1292,7 @@ type WorkoutSummaryProps = {
 };
 
 function WorkoutSummary({
+  profileName,
   completedSets,
   totalSets,
   totalVolume,
@@ -946,26 +1302,46 @@ function WorkoutSummary({
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={styles.summaryContent}
+      contentContainerStyle={
+        styles.summaryContent
+      }
     >
-      <View style={styles.summaryCheck}>
-        <Text style={styles.summaryCheckText}>
+      <View
+        style={styles.summaryCheck}
+      >
+        <Text
+          style={
+            styles.summaryCheckText
+          }
+        >
           ✓
         </Text>
       </View>
 
-      <Text style={styles.summaryTitle}>
+      <Text
+        style={styles.summaryTitle}
+      >
         Workout complete
       </Text>
 
-      <Text style={styles.summarySubtitle}>
-        Great job finishing your Push Day workout.
+      <Text
+        style={
+          styles.summarySubtitle
+        }
+      >
+        Great job, {profileName}.
+        Your Push Day workout was
+        saved.
       </Text>
 
-      <View style={styles.summaryCard}>
+      <View
+        style={styles.summaryCard}
+      >
         <SummaryRow
           label="Duration"
-          value={formatTime(workoutSeconds)}
+          value={formatTime(
+            workoutSeconds
+          )}
         />
 
         <View style={styles.divider} />
@@ -986,11 +1362,16 @@ function WorkoutSummary({
       <Pressable
         style={({ pressed }) => [
           styles.finishButton,
-          pressed && styles.buttonPressed,
+          pressed &&
+            styles.buttonPressed,
         ]}
         onPress={onDone}
       >
-        <Text style={styles.finishButtonText}>
+        <Text
+          style={
+            styles.finishButtonText
+          }
+        >
           Return home
         </Text>
       </Pressable>
@@ -1009,11 +1390,19 @@ function SummaryRow({
 }: SummaryRowProps) {
   return (
     <View style={styles.summaryRow}>
-      <Text style={styles.summaryRowLabel}>
+      <Text
+        style={
+          styles.summaryRowLabel
+        }
+      >
         {label}
       </Text>
 
-      <Text style={styles.summaryRowValue}>
+      <Text
+        style={
+          styles.summaryRowValue
+        }
+      >
         {value}
       </Text>
     </View>
@@ -1030,12 +1419,22 @@ function WorkoutDetail({
   label,
 }: WorkoutDetailProps) {
   return (
-    <View style={styles.workoutDetail}>
-      <Text style={styles.workoutDetailValue}>
+    <View
+      style={styles.workoutDetail}
+    >
+      <Text
+        style={
+          styles.workoutDetailValue
+        }
+      >
         {value}
       </Text>
 
-      <Text style={styles.workoutDetailLabel}>
+      <Text
+        style={
+          styles.workoutDetailLabel
+        }
+      >
         {label}
       </Text>
     </View>
@@ -1055,24 +1454,35 @@ function StatCard({
 }: StatCardProps) {
   return (
     <View style={styles.statCard}>
-      <Text style={styles.statTitle}>
+      <Text
+        style={styles.statTitle}
+      >
         {title}
       </Text>
 
-      <Text style={styles.statValue}>
+      <Text
+        style={styles.statValue}
+      >
         {value}
       </Text>
 
-      <Text style={styles.statGoal}>
+      <Text
+        style={styles.statGoal}
+      >
         {goal}
       </Text>
     </View>
   );
 }
 
-function formatTime(totalSeconds: number) {
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
+function formatTime(
+  totalSeconds: number
+) {
+  const minutes =
+    Math.floor(totalSeconds / 60);
+
+  const seconds =
+    totalSeconds % 60;
 
   return `${minutes}:${seconds
     .toString()
@@ -1230,6 +1640,9 @@ const styles = StyleSheet.create({
   },
   buttonPressed: {
     opacity: 0.75,
+  },
+  disabledButton: {
+    opacity: 0.55,
   },
   mealRow: {
     minHeight: 70,

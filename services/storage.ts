@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const FOOD_STORAGE_KEY = '@parker_fitness_foods';
 const ACTIVE_PROFILE_KEY = '@parker_fitness_active_profile';
+const WORKOUT_STORAGE_KEY = '@parker_fitness_workouts';
 
 export type ProfileId = 'zach' | 'wife';
 
@@ -24,6 +25,34 @@ export type Profile = {
   name: string;
   calorieGoal: number;
   proteinGoal: number;
+};
+
+export type StoredWorkoutSet = {
+  id: number;
+  weight: string;
+  reps: string;
+  completed: boolean;
+};
+
+export type StoredWorkoutExercise = {
+  id: number;
+  name: string;
+  muscle: string;
+  sets: StoredWorkoutSet[];
+};
+
+export type StoredWorkout = {
+  id: string;
+  profileId: ProfileId;
+  date: string;
+  completedAt: string;
+  workoutName: string;
+  workoutType: string;
+  durationSeconds: number;
+  completedSets: number;
+  totalSets: number;
+  totalVolume: number;
+  exercises: StoredWorkoutExercise[];
 };
 
 export const PROFILES: Record<ProfileId, Profile> = {
@@ -57,6 +86,12 @@ export function getTodayDate(): string {
 
   return `${year}-${month}-${day}`;
 }
+
+/*
+ * ============================================================
+ * FOOD STORAGE
+ * ============================================================
+ */
 
 export async function saveFoods<T>(
   foods: T[]
@@ -276,6 +311,23 @@ export async function migrateExistingFoods(): Promise<void> {
   }
 }
 
+export async function clearFoods(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(
+      FOOD_STORAGE_KEY
+    );
+  } catch (error) {
+    console.error('Error clearing foods:', error);
+    throw error;
+  }
+}
+
+/*
+ * ============================================================
+ * ACTIVE PROFILE STORAGE
+ * ============================================================
+ */
+
 export async function saveActiveProfile(
   profileId: ProfileId
 ): Promise<void> {
@@ -319,13 +371,181 @@ export async function loadActiveProfile(): Promise<ProfileId> {
   }
 }
 
-export async function clearFoods(): Promise<void> {
+/*
+ * ============================================================
+ * WORKOUT STORAGE
+ * ============================================================
+ */
+
+export async function saveWorkouts(
+  workouts: StoredWorkout[]
+): Promise<void> {
   try {
-    await AsyncStorage.removeItem(
-      FOOD_STORAGE_KEY
+    const jsonValue = JSON.stringify(workouts);
+
+    await AsyncStorage.setItem(
+      WORKOUT_STORAGE_KEY,
+      jsonValue
     );
   } catch (error) {
-    console.error('Error clearing foods:', error);
+    console.error(
+      'Error saving workouts:',
+      error
+    );
+
+    throw error;
+  }
+}
+
+export async function loadWorkouts(): Promise<
+  StoredWorkout[]
+> {
+  try {
+    const jsonValue = await AsyncStorage.getItem(
+      WORKOUT_STORAGE_KEY
+    );
+
+    if (jsonValue === null) {
+      return [];
+    }
+
+    return JSON.parse(
+      jsonValue
+    ) as StoredWorkout[];
+  } catch (error) {
+    console.error(
+      'Error loading workouts:',
+      error
+    );
+
+    throw error;
+  }
+}
+
+export async function addWorkout(
+  workout: StoredWorkout
+): Promise<void> {
+  try {
+    const workouts = await loadWorkouts();
+
+    const updatedWorkouts = [
+      workout,
+      ...workouts,
+    ];
+
+    await saveWorkouts(updatedWorkouts);
+  } catch (error) {
+    console.error(
+      'Error adding workout:',
+      error
+    );
+
+    throw error;
+  }
+}
+
+export async function loadWorkoutsForProfile(
+  profileId: ProfileId
+): Promise<StoredWorkout[]> {
+  try {
+    const workouts = await loadWorkouts();
+
+    return workouts.filter(
+      (workout) =>
+        workout.profileId === profileId
+    );
+  } catch (error) {
+    console.error(
+      'Error loading workouts for profile:',
+      error
+    );
+
+    throw error;
+  }
+}
+
+export async function loadWorkoutsForProfileAndDate(
+  profileId: ProfileId,
+  date: string
+): Promise<StoredWorkout[]> {
+  try {
+    const workouts = await loadWorkouts();
+
+    return workouts.filter(
+      (workout) =>
+        workout.profileId === profileId &&
+        workout.date === date
+    );
+  } catch (error) {
+    console.error(
+      'Error loading workouts for profile and date:',
+      error
+    );
+
+    throw error;
+  }
+}
+
+export async function loadLatestWorkoutForProfile(
+  profileId: ProfileId
+): Promise<StoredWorkout | null> {
+  try {
+    const workouts =
+      await loadWorkoutsForProfile(profileId);
+
+    if (workouts.length === 0) {
+      return null;
+    }
+
+    const sortedWorkouts = [...workouts].sort(
+      (a, b) =>
+        new Date(b.completedAt).getTime() -
+        new Date(a.completedAt).getTime()
+    );
+
+    return sortedWorkouts[0];
+  } catch (error) {
+    console.error(
+      'Error loading latest workout:',
+      error
+    );
+
+    throw error;
+  }
+}
+
+export async function deleteWorkout(
+  workoutId: string
+): Promise<void> {
+  try {
+    const workouts = await loadWorkouts();
+
+    const updatedWorkouts = workouts.filter(
+      (workout) => workout.id !== workoutId
+    );
+
+    await saveWorkouts(updatedWorkouts);
+  } catch (error) {
+    console.error(
+      'Error deleting workout:',
+      error
+    );
+
+    throw error;
+  }
+}
+
+export async function clearWorkouts(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(
+      WORKOUT_STORAGE_KEY
+    );
+  } catch (error) {
+    console.error(
+      'Error clearing workouts:',
+      error
+    );
+
     throw error;
   }
 }
