@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Modal,
@@ -10,7 +10,12 @@ import {
   View,
 } from 'react-native';
 
-import { loadFoods, saveFoods } from '@/services/storage';
+import {
+  addDateToExistingFoods,
+  getTodayDate,
+  loadFoods,
+  saveFoods,
+} from '@/services/storage';
 
 type MealType = 'Breakfast' | 'Lunch' | 'Dinner' | 'Snacks';
 
@@ -24,6 +29,7 @@ type FoodItem = {
   carbs: number;
   fat: number;
   meal: MealType;
+  date?: string;
 };
 
 const mealTypes: MealType[] = [
@@ -33,34 +39,13 @@ const mealTypes: MealType[] = [
   'Snacks',
 ];
 
-const startingFoods: FoodItem[] = [
-  {
-    id: '1',
-    name: 'Protein Shake',
-    servingSize: '1',
-    servingUnit: 'bottle',
-    calories: 220,
-    protein: 30,
-    carbs: 8,
-    fat: 4,
-    meal: 'Breakfast',
-  },
-  {
-    id: '2',
-    name: 'Chicken Rice Bowl',
-    servingSize: '1',
-    servingUnit: 'bowl',
-    calories: 510,
-    protein: 45,
-    carbs: 55,
-    fat: 14,
-    meal: 'Lunch',
-  },
-];
-
 export default function MealsScreen() {
-  const [foods, setFoods] = useState<FoodItem[]>(startingFoods);
+  const [foods, setFoods] = useState<FoodItem[]>([]);
   const [storageLoaded, setStorageLoaded] = useState(false);
+
+  const [selectedDate, setSelectedDate] = useState(
+    getTodayDate()
+  );
 
   const [modalVisible, setModalVisible] = useState(false);
 
@@ -78,10 +63,16 @@ export default function MealsScreen() {
   const [carbs, setCarbs] = useState('');
   const [fat, setFat] = useState('');
 
-  // Load saved food when the Meals screen opens.
   useEffect(() => {
     async function restoreFoods() {
       try {
+        /*
+         * This migrates foods created before we added dates.
+         * Existing undated foods are assigned to today instead
+         * of being deleted.
+         */
+        await addDateToExistingFoods<FoodItem>();
+
         const savedFoods = await loadFoods<FoodItem>();
 
         if (savedFoods !== null) {
@@ -97,7 +88,6 @@ export default function MealsScreen() {
     restoreFoods();
   }, []);
 
-  // Save food automatically whenever the food list changes.
   useEffect(() => {
     if (!storageLoaded) {
       return;
@@ -114,25 +104,37 @@ export default function MealsScreen() {
     persistFoods();
   }, [foods, storageLoaded]);
 
-  const totalCalories = foods.reduce(
+  /*
+   * Only foods belonging to the selected day are displayed
+   * and included in the nutrition totals.
+   */
+  const selectedDateFoods = useMemo(() => {
+    return foods.filter(
+      (food) => food.date === selectedDate
+    );
+  }, [foods, selectedDate]);
+
+  const totalCalories = selectedDateFoods.reduce(
     (total, food) => total + food.calories,
     0
   );
 
-  const totalProtein = foods.reduce(
+  const totalProtein = selectedDateFoods.reduce(
     (total, food) => total + food.protein,
     0
   );
 
-  const totalCarbs = foods.reduce(
+  const totalCarbs = selectedDateFoods.reduce(
     (total, food) => total + food.carbs,
     0
   );
 
-  const totalFat = foods.reduce(
+  const totalFat = selectedDateFoods.reduce(
     (total, food) => total + food.fat,
     0
   );
+
+  const isToday = selectedDate === getTodayDate();
 
   function resetForm() {
     setFoodName('');
@@ -169,6 +171,18 @@ export default function MealsScreen() {
   function closeModal() {
     setModalVisible(false);
     resetForm();
+  }
+
+  function changeDate(days: number) {
+    const date = parseLocalDate(selectedDate);
+
+    date.setDate(date.getDate() + days);
+
+    setSelectedDate(formatLocalDate(date));
+  }
+
+  function goToToday() {
+    setSelectedDate(getTodayDate());
   }
 
   function saveFood() {
@@ -249,6 +263,16 @@ export default function MealsScreen() {
       return;
     }
 
+    /*
+     * When editing, preserve the original food's date.
+     * When adding, use whichever date the user is viewing.
+     */
+    const existingFood = editingFoodId
+      ? foods.find(
+          (food) => food.id === editingFoodId
+        )
+      : undefined;
+
     const foodData: FoodItem = {
       id: editingFoodId ?? Date.now().toString(),
       name: foodName.trim(),
@@ -259,6 +283,7 @@ export default function MealsScreen() {
       carbs: parsedCarbs,
       fat: parsedFat,
       meal: selectedMeal,
+      date: existingFood?.date ?? selectedDate,
     };
 
     if (editingFoodId) {
@@ -282,7 +307,7 @@ export default function MealsScreen() {
   function deleteFood(id: string) {
     Alert.alert(
       'Delete food?',
-      'This food will be removed from today.',
+      'This food will be removed from this day.',
       [
         {
           text: 'Cancel',
@@ -318,8 +343,63 @@ export default function MealsScreen() {
         </Text>
 
         <Text style={styles.subtitle}>
-          Track today's nutrition.
+          Track your daily nutrition.
         </Text>
+
+        <View style={styles.dateCard}>
+          <Pressable
+            style={styles.dateArrowButton}
+            onPress={() => changeDate(-1)}
+          >
+            <Text style={styles.dateArrow}>
+              ‹
+            </Text>
+          </Pressable>
+
+          <View style={styles.dateCenter}>
+            <Text style={styles.dateLabel}>
+              {isToday ? 'TODAY' : 'SELECTED DAY'}
+            </Text>
+
+            <Text style={styles.dateValue}>
+              {formatDisplayDate(selectedDate)}
+            </Text>
+          </View>
+
+          <Pressable
+            style={[
+              styles.dateArrowButton,
+              isToday && styles.dateArrowDisabled,
+            ]}
+            onPress={() => {
+              if (!isToday) {
+                changeDate(1);
+              }
+            }}
+            disabled={isToday}
+          >
+            <Text
+              style={[
+                styles.dateArrow,
+                isToday &&
+                  styles.dateArrowTextDisabled,
+              ]}
+            >
+              ›
+            </Text>
+          </Pressable>
+        </View>
+
+        {!isToday && (
+          <Pressable
+            style={styles.todayButton}
+            onPress={goToToday}
+          >
+            <Text style={styles.todayButtonText}>
+              Return to Today
+            </Text>
+          </Pressable>
+        )}
 
         <View style={styles.calorieCard}>
           <Text style={styles.summaryLabel}>
@@ -328,6 +408,12 @@ export default function MealsScreen() {
 
           <Text style={styles.calorieValue}>
             {totalCalories}
+          </Text>
+
+          <Text style={styles.calorieDateText}>
+            {isToday
+              ? "Today's total"
+              : formatDisplayDate(selectedDate)}
           </Text>
         </View>
 
@@ -349,9 +435,10 @@ export default function MealsScreen() {
         </View>
 
         {mealTypes.map((meal) => {
-          const mealFoods = foods.filter(
-            (food) => food.meal === meal
-          );
+          const mealFoods =
+            selectedDateFoods.filter(
+              (food) => food.meal === meal
+            );
 
           const mealCalories = mealFoods.reduce(
             (total, food) =>
@@ -422,7 +509,9 @@ export default function MealsScreen() {
                         }
                         hitSlop={8}
                       >
-                        <Text style={styles.deleteText}>
+                        <Text
+                          style={styles.deleteText}
+                        >
                           Delete
                         </Text>
                       </Pressable>
@@ -463,6 +552,10 @@ export default function MealsScreen() {
 
           <Text style={styles.modalMeal}>
             {selectedMeal}
+          </Text>
+
+          <Text style={styles.modalDate}>
+            {formatDisplayDate(selectedDate)}
           </Text>
 
           <FormInput
@@ -602,6 +695,38 @@ function FormInput({
   );
 }
 
+function parseLocalDate(dateString: string) {
+  const [year, month, day] = dateString
+    .split('-')
+    .map(Number);
+
+  return new Date(year, month - 1, day);
+}
+
+function formatLocalDate(date: Date) {
+  const year = date.getFullYear();
+
+  const month = String(
+    date.getMonth() + 1
+  ).padStart(2, '0');
+
+  const day = String(
+    date.getDate()
+  ).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+}
+
+function formatDisplayDate(dateString: string) {
+  const date = parseLocalDate(dateString);
+
+  return date.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
@@ -632,7 +757,73 @@ const styles = StyleSheet.create({
     color: '#6D7972',
     fontSize: 16,
     marginTop: 4,
-    marginBottom: 24,
+    marginBottom: 20,
+  },
+
+  dateCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  dateArrowButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: '#EDF4EF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  dateArrowDisabled: {
+    backgroundColor: '#F1F2F1',
+  },
+
+  dateArrow: {
+    color: '#2D6B48',
+    fontSize: 36,
+    lineHeight: 40,
+    fontWeight: '600',
+  },
+
+  dateArrowTextDisabled: {
+    color: '#B8BFBB',
+  },
+
+  dateCenter: {
+    flex: 1,
+    alignItems: 'center',
+  },
+
+  dateLabel: {
+    color: '#557063',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+
+  dateValue: {
+    color: '#17211C',
+    fontSize: 17,
+    fontWeight: '900',
+    marginTop: 3,
+  },
+
+  todayButton: {
+    alignSelf: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    marginBottom: 8,
+  },
+
+  todayButtonText: {
+    color: '#2D6B48',
+    fontSize: 13,
+    fontWeight: '800',
   },
 
   calorieCard: {
@@ -654,6 +845,12 @@ const styles = StyleSheet.create({
     fontSize: 42,
     fontWeight: '900',
     marginTop: 5,
+  },
+
+  calorieDateText: {
+    color: '#C8D6CE',
+    fontSize: 12,
+    marginTop: 4,
   },
 
   macroRow: {
@@ -798,6 +995,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     marginTop: 5,
+  },
+
+  modalDate: {
+    color: '#6D7972',
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 3,
     marginBottom: 18,
   },
 
