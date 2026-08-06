@@ -10,7 +10,13 @@ import {
   View,
 } from 'react-native';
 
-import { loadFoods } from '@/services/storage';
+import {
+  getTodayDate,
+  loadActiveProfile,
+  loadFoods,
+  ProfileId,
+  PROFILES,
+} from '@/services/storage';
 
 type WorkoutSet = {
   id: number;
@@ -38,10 +44,10 @@ type FoodItem = {
   carbs: number;
   fat: number;
   meal: MealType;
+  date?: string;
+  profileId?: ProfileId;
 };
 
-const CALORIE_GOAL = 2000;
-const PROTEIN_GOAL = 160;
 const WATER_GOAL = 96;
 
 const STARTING_EXERCISES: Exercise[] = [
@@ -106,6 +112,9 @@ export default function HomeScreen() {
 
   const [foods, setFoods] = useState<FoodItem[]>([]);
 
+  const [activeProfile, setActiveProfile] =
+    useState<ProfileId>('zach');
+
   const [workoutSeconds, setWorkoutSeconds] = useState(0);
   const [workoutRunning, setWorkoutRunning] = useState(false);
   const [restSeconds, setRestSeconds] = useState(0);
@@ -113,9 +122,22 @@ export default function HomeScreen() {
   const loadDashboardFoods = useCallback(async () => {
     try {
       const savedFoods = await loadFoods<FoodItem>();
-      setFoods(savedFoods ?? []);
+      const savedProfile = await loadActiveProfile();
+      const today = getTodayDate();
+
+      const todaysProfileFoods = (savedFoods ?? []).filter(
+        (food) =>
+          food.date === today &&
+          food.profileId === savedProfile
+      );
+
+      setActiveProfile(savedProfile);
+      setFoods(todaysProfileFoods);
     } catch (error) {
-      console.error('Unable to load dashboard foods:', error);
+      console.error(
+        'Unable to load dashboard foods:',
+        error
+      );
     }
   }, []);
 
@@ -348,6 +370,7 @@ export default function HomeScreen() {
   return (
     <HomeDashboard
       foods={foods}
+      activeProfile={activeProfile}
       onStartWorkout={startWorkout}
     />
   );
@@ -355,13 +378,20 @@ export default function HomeScreen() {
 
 type HomeDashboardProps = {
   foods: FoodItem[];
+  activeProfile: ProfileId;
   onStartWorkout: () => void;
 };
 
 function HomeDashboard({
   foods,
+  activeProfile,
   onStartWorkout,
 }: HomeDashboardProps) {
+  const currentProfile = PROFILES[activeProfile];
+
+  const calorieGoal = currentProfile.calorieGoal;
+  const proteinGoal = currentProfile.proteinGoal;
+
   const caloriesUsed = foods.reduce(
     (total, food) => total + food.calories,
     0
@@ -373,14 +403,14 @@ function HomeDashboard({
   );
 
   const caloriesRemaining = Math.max(
-    CALORIE_GOAL - caloriesUsed,
+    calorieGoal - caloriesUsed,
     0
   );
 
-  const calorieProgress = Math.min(
-    caloriesUsed / CALORIE_GOAL,
-    1
-  );
+  const calorieProgress =
+    calorieGoal === 0
+      ? 0
+      : Math.min(caloriesUsed / calorieGoal, 1);
 
   const breakfastFoods = foods.filter(
     (food) => food.meal === 'Breakfast'
@@ -404,7 +434,7 @@ function HomeDashboard({
       </Text>
 
       <Text style={styles.title}>
-        Good morning, Zach
+        Good morning, {currentProfile.name}
       </Text>
 
       <Text style={styles.subtitle}>
@@ -422,7 +452,7 @@ function HomeDashboard({
 
         <Text style={styles.cardText}>
           {caloriesUsed.toLocaleString()} of{' '}
-          {CALORIE_GOAL.toLocaleString()} calories used
+          {calorieGoal.toLocaleString()} calories used
         </Text>
 
         <View style={styles.progressBackground}>
@@ -445,7 +475,7 @@ function HomeDashboard({
         <StatCard
           title="Protein"
           value={`${proteinUsed}g`}
-          goal={`${PROTEIN_GOAL}g goal`}
+          goal={`${proteinGoal}g goal`}
         />
 
         <StatCard
@@ -639,9 +669,7 @@ function WorkoutScreen({
     <View style={styles.screen}>
       <ScrollView
         style={styles.screen}
-        contentContainerStyle={
-          styles.workoutContent
-        }
+        contentContainerStyle={styles.workoutContent}
       >
         <View style={styles.workoutHeader}>
           <View>
@@ -683,9 +711,7 @@ function WorkoutScreen({
           </View>
 
           <View
-            style={
-              styles.workoutProgressBackground
-            }
+            style={styles.workoutProgressBackground}
           >
             <View
               style={[
@@ -698,8 +724,7 @@ function WorkoutScreen({
           </View>
 
           <Text style={styles.setProgressText}>
-            {completedSets} of {totalSets} sets
-            completed
+            {completedSets} of {totalSets} sets completed
           </Text>
         </View>
 
@@ -719,9 +744,7 @@ function WorkoutScreen({
               style={styles.restButton}
               onPress={onStopRest}
             >
-              <Text
-                style={styles.restButtonText}
-              >
+              <Text style={styles.restButtonText}>
                 Skip rest
               </Text>
             </Pressable>
@@ -731,11 +754,7 @@ function WorkoutScreen({
             style={styles.manualRestButton}
             onPress={onStartRest}
           >
-            <Text
-              style={
-                styles.manualRestButtonText
-              }
-            >
+            <Text style={styles.manualRestButtonText}>
               Start 90-second rest timer
             </Text>
           </Pressable>
@@ -746,9 +765,7 @@ function WorkoutScreen({
             <ExerciseCard
               key={exercise.id}
               exercise={exercise}
-              exerciseNumber={
-                exerciseIndex + 1
-              }
+              exerciseNumber={exerciseIndex + 1}
               onUpdateSet={onUpdateSet}
               onToggleSet={onToggleSet}
               onAddSet={onAddSet}
@@ -834,12 +851,8 @@ function ExerciseCard({
                 styles.completedSetRow,
             ]}
           >
-            <View
-              style={styles.setNumberCircle}
-            >
-              <Text
-                style={styles.setNumberText}
-              >
+            <View style={styles.setNumberCircle}>
+              <Text style={styles.setNumberText}>
                 {index + 1}
               </Text>
             </View>
@@ -896,9 +909,7 @@ function ExerciseCard({
                     styles.checkTextCompleted,
                 ]}
               >
-                {workoutSet.completed
-                  ? '✓'
-                  : ''}
+                {workoutSet.completed ? '✓' : ''}
               </Text>
             </Pressable>
           </View>
@@ -907,9 +918,7 @@ function ExerciseCard({
 
       <Pressable
         style={styles.addSetButton}
-        onPress={() =>
-          onAddSet(exercise.id)
-        }
+        onPress={() => onAddSet(exercise.id)}
       >
         <Text style={styles.addSetButtonText}>
           + Add set
@@ -937,14 +946,10 @@ function WorkoutSummary({
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={
-        styles.summaryContent
-      }
+      contentContainerStyle={styles.summaryContent}
     >
       <View style={styles.summaryCheck}>
-        <Text
-          style={styles.summaryCheckText}
-        >
+        <Text style={styles.summaryCheckText}>
           ✓
         </Text>
       </View>
@@ -954,16 +959,13 @@ function WorkoutSummary({
       </Text>
 
       <Text style={styles.summarySubtitle}>
-        Great job finishing your Push Day
-        workout.
+        Great job finishing your Push Day workout.
       </Text>
 
       <View style={styles.summaryCard}>
         <SummaryRow
           label="Duration"
-          value={formatTime(
-            workoutSeconds
-          )}
+          value={formatTime(workoutSeconds)}
         />
 
         <View style={styles.divider} />
@@ -1029,15 +1031,11 @@ function WorkoutDetail({
 }: WorkoutDetailProps) {
   return (
     <View style={styles.workoutDetail}>
-      <Text
-        style={styles.workoutDetailValue}
-      >
+      <Text style={styles.workoutDetailValue}>
         {value}
       </Text>
 
-      <Text
-        style={styles.workoutDetailLabel}
-      >
+      <Text style={styles.workoutDetailLabel}>
         {label}
       </Text>
     </View>
@@ -1073,10 +1071,7 @@ function StatCard({
 }
 
 function formatTime(totalSeconds: number) {
-  const minutes = Math.floor(
-    totalSeconds / 60
-  );
-
+  const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
 
   return `${minutes}:${seconds
