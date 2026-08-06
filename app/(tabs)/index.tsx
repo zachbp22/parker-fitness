@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Pressable,
@@ -8,6 +9,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
+
+import { loadFoods } from '@/services/storage';
 
 type WorkoutSet = {
   id: number;
@@ -22,6 +25,24 @@ type Exercise = {
   muscle: string;
   sets: WorkoutSet[];
 };
+
+type MealType = 'Breakfast' | 'Lunch' | 'Dinner' | 'Snacks';
+
+type FoodItem = {
+  id: string;
+  name: string;
+  servingSize: string;
+  servingUnit: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  meal: MealType;
+};
+
+const CALORIE_GOAL = 2000;
+const PROTEIN_GOAL = 160;
+const WATER_GOAL = 96;
 
 const STARTING_EXERCISES: Exercise[] = [
   {
@@ -77,14 +98,36 @@ const STARTING_EXERCISES: Exercise[] = [
 ];
 
 export default function HomeScreen() {
-  const [screen, setScreen] = useState<'home' | 'workout' | 'summary'>('home');
+  const [screen, setScreen] =
+    useState<'home' | 'workout' | 'summary'>('home');
+
   const [exercises, setExercises] =
     useState<Exercise[]>(STARTING_EXERCISES);
 
+  const [foods, setFoods] = useState<FoodItem[]>([]);
+
   const [workoutSeconds, setWorkoutSeconds] = useState(0);
   const [workoutRunning, setWorkoutRunning] = useState(false);
-
   const [restSeconds, setRestSeconds] = useState(0);
+
+  const loadDashboardFoods = useCallback(async () => {
+    try {
+      const savedFoods = await loadFoods<FoodItem>();
+      setFoods(savedFoods ?? []);
+    } catch (error) {
+      console.error('Unable to load dashboard foods:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDashboardFoods();
+  }, [loadDashboardFoods]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadDashboardFoods();
+    }, [loadDashboardFoods])
+  );
 
   useEffect(() => {
     if (!workoutRunning) {
@@ -128,23 +171,28 @@ export default function HomeScreen() {
     return exercises.reduce(
       (total, exercise) =>
         total +
-        exercise.sets.filter((workoutSet) => workoutSet.completed).length,
+        exercise.sets.filter(
+          (workoutSet) => workoutSet.completed
+        ).length,
       0
     );
   }, [exercises]);
 
   const totalVolume = useMemo(() => {
     return exercises.reduce((exerciseTotal, exercise) => {
-      const exerciseVolume = exercise.sets.reduce((setTotal, workoutSet) => {
-        if (!workoutSet.completed) {
-          return setTotal;
-        }
+      const exerciseVolume = exercise.sets.reduce(
+        (setTotal, workoutSet) => {
+          if (!workoutSet.completed) {
+            return setTotal;
+          }
 
-        const weight = Number(workoutSet.weight) || 0;
-        const reps = Number(workoutSet.reps) || 0;
+          const weight = Number(workoutSet.weight) || 0;
+          const reps = Number(workoutSet.reps) || 0;
 
-        return setTotal + weight * reps;
-      }, 0);
+          return setTotal + weight * reps;
+        },
+        0
+      );
 
       return exerciseTotal + exerciseVolume;
     }, 0);
@@ -226,7 +274,8 @@ export default function HomeScreen() {
           return exercise;
         }
 
-        const lastSet = exercise.sets[exercise.sets.length - 1];
+        const lastSet =
+          exercise.sets[exercise.sets.length - 1];
 
         const newSet: WorkoutSet = {
           id: Date.now(),
@@ -296,51 +345,148 @@ export default function HomeScreen() {
     );
   }
 
-  return <HomeDashboard onStartWorkout={startWorkout} />;
+  return (
+    <HomeDashboard
+      foods={foods}
+      onStartWorkout={startWorkout}
+    />
+  );
 }
 
 type HomeDashboardProps = {
+  foods: FoodItem[];
   onStartWorkout: () => void;
 };
 
-function HomeDashboard({ onStartWorkout }: HomeDashboardProps) {
+function HomeDashboard({
+  foods,
+  onStartWorkout,
+}: HomeDashboardProps) {
+  const caloriesUsed = foods.reduce(
+    (total, food) => total + food.calories,
+    0
+  );
+
+  const proteinUsed = foods.reduce(
+    (total, food) => total + food.protein,
+    0
+  );
+
+  const caloriesRemaining = Math.max(
+    CALORIE_GOAL - caloriesUsed,
+    0
+  );
+
+  const calorieProgress = Math.min(
+    caloriesUsed / CALORIE_GOAL,
+    1
+  );
+
+  const breakfastFoods = foods.filter(
+    (food) => food.meal === 'Breakfast'
+  );
+
+  const lunchFoods = foods.filter(
+    (food) => food.meal === 'Lunch'
+  );
+
+  const dinnerFoods = foods.filter(
+    (food) => food.meal === 'Dinner'
+  );
+
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <Text style={styles.smallHeading}>PARKER FITNESS</Text>
-      <Text style={styles.title}>Good morning, Zach</Text>
-      <Text style={styles.subtitle}>Here is today’s progress.</Text>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+    >
+      <Text style={styles.smallHeading}>
+        PARKER FITNESS
+      </Text>
+
+      <Text style={styles.title}>
+        Good morning, Zach
+      </Text>
+
+      <Text style={styles.subtitle}>
+        Here is today's progress.
+      </Text>
 
       <View style={styles.mainCard}>
-        <Text style={styles.cardLabel}>CALORIES REMAINING</Text>
-        <Text style={styles.largeNumber}>760</Text>
-        <Text style={styles.cardText}>1,240 of 2,000 calories used</Text>
+        <Text style={styles.cardLabel}>
+          CALORIES REMAINING
+        </Text>
+
+        <Text style={styles.largeNumber}>
+          {caloriesRemaining.toLocaleString()}
+        </Text>
+
+        <Text style={styles.cardText}>
+          {caloriesUsed.toLocaleString()} of{' '}
+          {CALORIE_GOAL.toLocaleString()} calories used
+        </Text>
 
         <View style={styles.progressBackground}>
-          <View style={styles.progressFill} />
+          <View
+            style={[
+              styles.progressFill,
+              {
+                width: `${calorieProgress * 100}%`,
+              },
+            ]}
+          />
         </View>
       </View>
 
-      <Text style={styles.sectionTitle}>Daily goals</Text>
+      <Text style={styles.sectionTitle}>
+        Daily goals
+      </Text>
 
       <View style={styles.row}>
-        <StatCard title="Protein" value="92g" goal="160g goal" />
-        <StatCard title="Water" value="48 oz" goal="96 oz goal" />
+        <StatCard
+          title="Protein"
+          value={`${proteinUsed}g`}
+          goal={`${PROTEIN_GOAL}g goal`}
+        />
+
+        <StatCard
+          title="Water"
+          value="48 oz"
+          goal={`${WATER_GOAL} oz goal`}
+        />
       </View>
 
-      <Text style={styles.sectionTitle}>Today’s workout</Text>
+      <Text style={styles.sectionTitle}>
+        Today's workout
+      </Text>
 
       <View style={styles.whiteCard}>
-        <Text style={styles.workoutLabel}>UPPER BODY</Text>
-        <Text style={styles.workoutTitle}>Push Day</Text>
+        <Text style={styles.workoutLabel}>
+          UPPER BODY
+        </Text>
+
+        <Text style={styles.workoutTitle}>
+          Push Day
+        </Text>
 
         <Text style={styles.cardDescription}>
           Chest press, shoulder press, triceps and core
         </Text>
 
         <View style={styles.workoutDetailsRow}>
-          <WorkoutDetail value="5" label="Exercises" />
-          <WorkoutDetail value="15" label="Sets" />
-          <WorkoutDetail value="45–60" label="Minutes" />
+          <WorkoutDetail
+            value="5"
+            label="Exercises"
+          />
+
+          <WorkoutDetail
+            value="15"
+            label="Sets"
+          />
+
+          <WorkoutDetail
+            value="45-60"
+            label="Minutes"
+          />
         </View>
 
         <Pressable
@@ -350,28 +496,98 @@ function HomeDashboard({ onStartWorkout }: HomeDashboardProps) {
           ]}
           onPress={onStartWorkout}
         >
-          <Text style={styles.startButtonText}>Start workout</Text>
+          <Text style={styles.startButtonText}>
+            Start workout
+          </Text>
         </Pressable>
       </View>
 
-      <Text style={styles.sectionTitle}>Meals</Text>
+      <Text style={styles.sectionTitle}>
+        Meals
+      </Text>
 
       <View style={styles.whiteCard}>
-        <MealRow title="Breakfast" detail="Protein shake" calories="220 cal" />
+        <DashboardMealRow
+          title="Breakfast"
+          foods={breakfastFoods}
+        />
+
         <View style={styles.divider} />
-        <MealRow title="Lunch" detail="Chicken rice bowl" calories="510 cal" />
+
+        <DashboardMealRow
+          title="Lunch"
+          foods={lunchFoods}
+        />
+
         <View style={styles.divider} />
-        <MealRow title="Dinner" detail="Not logged" calories="+ Add meal" />
+
+        <DashboardMealRow
+          title="Dinner"
+          foods={dinnerFoods}
+        />
       </View>
 
-      <Text style={styles.sectionTitle}>Weekly progress</Text>
+      <Text style={styles.sectionTitle}>
+        Weekly progress
+      </Text>
 
       <View style={styles.whiteCard}>
-        <Text style={styles.cardLabelDark}>CURRENT WEIGHT</Text>
-        <Text style={styles.weight}>238.4 lb</Text>
-        <Text style={styles.change}>Down 2.1 lb this week</Text>
+        <Text style={styles.cardLabelDark}>
+          CURRENT WEIGHT
+        </Text>
+
+        <Text style={styles.weight}>
+          238.4 lb
+        </Text>
+
+        <Text style={styles.change}>
+          Down 2.1 lb this week
+        </Text>
       </View>
     </ScrollView>
+  );
+}
+
+type DashboardMealRowProps = {
+  title: string;
+  foods: FoodItem[];
+};
+
+function DashboardMealRow({
+  title,
+  foods,
+}: DashboardMealRowProps) {
+  const calories = foods.reduce(
+    (total, food) => total + food.calories,
+    0
+  );
+
+  const detail =
+    foods.length === 0
+      ? 'Not logged'
+      : foods.map((food) => food.name).join(', ');
+
+  return (
+    <View style={styles.mealRow}>
+      <View style={styles.mealInfo}>
+        <Text style={styles.mealTitle}>
+          {title}
+        </Text>
+
+        <Text
+          style={styles.mealDetail}
+          numberOfLines={2}
+        >
+          {detail}
+        </Text>
+      </View>
+
+      <Text style={styles.mealCalories}>
+        {foods.length === 0
+          ? '0 cal'
+          : `${calories} cal`}
+      </Text>
+    </View>
   );
 }
 
@@ -387,7 +603,10 @@ type WorkoutScreenProps = {
     field: 'weight' | 'reps',
     value: string
   ) => void;
-  onToggleSet: (exerciseId: number, setId: number) => void;
+  onToggleSet: (
+    exerciseId: number,
+    setId: number
+  ) => void;
   onAddSet: (exerciseId: number) => void;
   onFinishWorkout: () => void;
   onCancel: () => void;
@@ -410,81 +629,132 @@ function WorkoutScreen({
   onStopRest,
 }: WorkoutScreenProps) {
   const progress =
-    totalSets === 0 ? 0 : Math.round((completedSets / totalSets) * 100);
+    totalSets === 0
+      ? 0
+      : Math.round(
+          (completedSets / totalSets) * 100
+        );
 
   return (
     <View style={styles.screen}>
       <ScrollView
         style={styles.screen}
-        contentContainerStyle={styles.workoutContent}
+        contentContainerStyle={
+          styles.workoutContent
+        }
       >
         <View style={styles.workoutHeader}>
           <View>
-            <Text style={styles.smallHeading}>PUSH DAY</Text>
-            <Text style={styles.title}>Today’s workout</Text>
+            <Text style={styles.smallHeading}>
+              PUSH DAY
+            </Text>
+
+            <Text style={styles.title}>
+              Today's workout
+            </Text>
           </View>
 
           <Pressable onPress={onCancel}>
-            <Text style={styles.cancelText}>Exit</Text>
+            <Text style={styles.cancelText}>
+              Exit
+            </Text>
           </Pressable>
         </View>
 
         <View style={styles.workoutStatusCard}>
           <View>
-            <Text style={styles.statusLabel}>WORKOUT TIME</Text>
+            <Text style={styles.statusLabel}>
+              WORKOUT TIME
+            </Text>
+
             <Text style={styles.statusValue}>
               {formatTime(workoutSeconds)}
             </Text>
           </View>
 
           <View style={styles.statusRight}>
-            <Text style={styles.statusLabel}>PROGRESS</Text>
-            <Text style={styles.statusValue}>{progress}%</Text>
+            <Text style={styles.statusLabel}>
+              PROGRESS
+            </Text>
+
+            <Text style={styles.statusValue}>
+              {progress}%
+            </Text>
           </View>
 
-          <View style={styles.workoutProgressBackground}>
+          <View
+            style={
+              styles.workoutProgressBackground
+            }
+          >
             <View
               style={[
                 styles.workoutProgressFill,
-                { width: `${progress}%` },
+                {
+                  width: `${progress}%`,
+                },
               ]}
             />
           </View>
 
           <Text style={styles.setProgressText}>
-            {completedSets} of {totalSets} sets completed
+            {completedSets} of {totalSets} sets
+            completed
           </Text>
         </View>
 
         {restSeconds > 0 ? (
           <View style={styles.restCard}>
             <View>
-              <Text style={styles.restLabel}>REST TIMER</Text>
-              <Text style={styles.restTime}>{formatTime(restSeconds)}</Text>
+              <Text style={styles.restLabel}>
+                REST TIMER
+              </Text>
+
+              <Text style={styles.restTime}>
+                {formatTime(restSeconds)}
+              </Text>
             </View>
 
-            <Pressable style={styles.restButton} onPress={onStopRest}>
-              <Text style={styles.restButtonText}>Skip rest</Text>
+            <Pressable
+              style={styles.restButton}
+              onPress={onStopRest}
+            >
+              <Text
+                style={styles.restButtonText}
+              >
+                Skip rest
+              </Text>
             </Pressable>
           </View>
         ) : (
-          <Pressable style={styles.manualRestButton} onPress={onStartRest}>
-            <Text style={styles.manualRestButtonText}>
+          <Pressable
+            style={styles.manualRestButton}
+            onPress={onStartRest}
+          >
+            <Text
+              style={
+                styles.manualRestButtonText
+              }
+            >
               Start 90-second rest timer
             </Text>
           </Pressable>
         )}
 
-        {exercises.map((exercise, exerciseIndex) => (
-          <ExerciseCard
-            key={exercise.id}
-            exercise={exercise}
-            exerciseNumber={exerciseIndex + 1}
-            onUpdateSet={onUpdateSet}
-            onToggleSet={onToggleSet}
-            onAddSet={onAddSet}
-          />
-        ))}
+        {exercises.map(
+          (exercise, exerciseIndex) => (
+            <ExerciseCard
+              key={exercise.id}
+              exercise={exercise}
+              exerciseNumber={
+                exerciseIndex + 1
+              }
+              onUpdateSet={onUpdateSet}
+              onToggleSet={onToggleSet}
+              onAddSet={onAddSet}
+            />
+          )
+        )}
 
         <Pressable
           style={({ pressed }) => [
@@ -493,7 +763,9 @@ function WorkoutScreen({
           ]}
           onPress={onFinishWorkout}
         >
-          <Text style={styles.finishButtonText}>Finish workout</Text>
+          <Text style={styles.finishButtonText}>
+            Finish workout
+          </Text>
         </Pressable>
       </ScrollView>
     </View>
@@ -509,7 +781,10 @@ type ExerciseCardProps = {
     field: 'weight' | 'reps',
     value: string
   ) => void;
-  onToggleSet: (exerciseId: number, setId: number) => void;
+  onToggleSet: (
+    exerciseId: number,
+    setId: number
+  ) => void;
   onAddSet: (exerciseId: number) => void;
 };
 
@@ -523,76 +798,122 @@ function ExerciseCard({
   return (
     <View style={styles.exerciseCard}>
       <Text style={styles.exerciseMuscle}>
-        {exerciseNumber}. {exercise.muscle.toUpperCase()}
+        {exerciseNumber}.{' '}
+        {exercise.muscle.toUpperCase()}
       </Text>
 
-      <Text style={styles.exerciseName}>{exercise.name}</Text>
+      <Text style={styles.exerciseName}>
+        {exercise.name}
+      </Text>
 
       <View style={styles.setHeaderRow}>
-        <Text style={styles.setHeaderNumber}>SET</Text>
-        <Text style={styles.setHeaderInput}>WEIGHT</Text>
-        <Text style={styles.setHeaderInput}>REPS</Text>
-        <Text style={styles.setHeaderDone}>DONE</Text>
+        <Text style={styles.setHeaderNumber}>
+          SET
+        </Text>
+
+        <Text style={styles.setHeaderInput}>
+          WEIGHT
+        </Text>
+
+        <Text style={styles.setHeaderInput}>
+          REPS
+        </Text>
+
+        <Text style={styles.setHeaderDone}>
+          DONE
+        </Text>
       </View>
 
-      {exercise.sets.map((workoutSet, index) => (
-        <View
-          key={workoutSet.id}
-          style={[
-            styles.setRow,
-            workoutSet.completed && styles.completedSetRow,
-          ]}
-        >
-          <View style={styles.setNumberCircle}>
-            <Text style={styles.setNumberText}>{index + 1}</Text>
-          </View>
-
-          <TextInput
-            style={styles.setInput}
-            value={workoutSet.weight}
-            onChangeText={(value) =>
-              onUpdateSet(exercise.id, workoutSet.id, 'weight', value)
-            }
-            keyboardType="decimal-pad"
-            selectTextOnFocus
-            placeholder="0"
-          />
-
-          <TextInput
-            style={styles.setInput}
-            value={workoutSet.reps}
-            onChangeText={(value) =>
-              onUpdateSet(exercise.id, workoutSet.id, 'reps', value)
-            }
-            keyboardType="number-pad"
-            selectTextOnFocus
-            placeholder="0"
-          />
-
-          <Pressable
+      {exercise.sets.map(
+        (workoutSet, index) => (
+          <View
+            key={workoutSet.id}
             style={[
-              styles.checkButton,
-              workoutSet.completed && styles.checkButtonCompleted,
+              styles.setRow,
+              workoutSet.completed &&
+                styles.completedSetRow,
             ]}
-            onPress={() => onToggleSet(exercise.id, workoutSet.id)}
           >
-            <Text
-              style={[
-                styles.checkText,
-                workoutSet.completed && styles.checkTextCompleted,
-              ]}
+            <View
+              style={styles.setNumberCircle}
             >
-              {workoutSet.completed ? '✓' : ''}
-            </Text>
-          </Pressable>
-        </View>
-      ))}
+              <Text
+                style={styles.setNumberText}
+              >
+                {index + 1}
+              </Text>
+            </View>
+
+            <TextInput
+              style={styles.setInput}
+              value={workoutSet.weight}
+              onChangeText={(value) =>
+                onUpdateSet(
+                  exercise.id,
+                  workoutSet.id,
+                  'weight',
+                  value
+                )
+              }
+              keyboardType="decimal-pad"
+              selectTextOnFocus
+              placeholder="0"
+            />
+
+            <TextInput
+              style={styles.setInput}
+              value={workoutSet.reps}
+              onChangeText={(value) =>
+                onUpdateSet(
+                  exercise.id,
+                  workoutSet.id,
+                  'reps',
+                  value
+                )
+              }
+              keyboardType="number-pad"
+              selectTextOnFocus
+              placeholder="0"
+            />
+
+            <Pressable
+              style={[
+                styles.checkButton,
+                workoutSet.completed &&
+                  styles.checkButtonCompleted,
+              ]}
+              onPress={() =>
+                onToggleSet(
+                  exercise.id,
+                  workoutSet.id
+                )
+              }
+            >
+              <Text
+                style={[
+                  styles.checkText,
+                  workoutSet.completed &&
+                    styles.checkTextCompleted,
+                ]}
+              >
+                {workoutSet.completed
+                  ? '✓'
+                  : ''}
+              </Text>
+            </Pressable>
+          </View>
+        )
+      )}
 
       <Pressable
         style={styles.addSetButton}
-        onPress={() => onAddSet(exercise.id)}
+        onPress={() =>
+          onAddSet(exercise.id)
+        }
       >
-        <Text style={styles.addSetButtonText}>+ Add set</Text>
+        <Text style={styles.addSetButtonText}>
+          + Add set
+        </Text>
       </Pressable>
     </View>
   );
@@ -616,20 +937,35 @@ function WorkoutSummary({
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={styles.summaryContent}
+      contentContainerStyle={
+        styles.summaryContent
+      }
     >
       <View style={styles.summaryCheck}>
-        <Text style={styles.summaryCheckText}>✓</Text>
+        <Text
+          style={styles.summaryCheckText}
+        >
+          ✓
+        </Text>
       </View>
 
-      <Text style={styles.summaryTitle}>Workout complete</Text>
+      <Text style={styles.summaryTitle}>
+        Workout complete
+      </Text>
 
       <Text style={styles.summarySubtitle}>
-        Great job finishing your Push Day workout.
+        Great job finishing your Push Day
+        workout.
       </Text>
 
       <View style={styles.summaryCard}>
-        <SummaryRow label="Duration" value={formatTime(workoutSeconds)} />
+        <SummaryRow
+          label="Duration"
+          value={formatTime(
+            workoutSeconds
+          )}
+        />
+
         <View style={styles.divider} />
 
         <SummaryRow
@@ -652,7 +988,9 @@ function WorkoutSummary({
         ]}
         onPress={onDone}
       >
-        <Text style={styles.finishButtonText}>Return home</Text>
+        <Text style={styles.finishButtonText}>
+          Return home
+        </Text>
       </Pressable>
     </ScrollView>
   );
@@ -663,11 +1001,19 @@ type SummaryRowProps = {
   value: string;
 };
 
-function SummaryRow({ label, value }: SummaryRowProps) {
+function SummaryRow({
+  label,
+  value,
+}: SummaryRowProps) {
   return (
     <View style={styles.summaryRow}>
-      <Text style={styles.summaryRowLabel}>{label}</Text>
-      <Text style={styles.summaryRowValue}>{value}</Text>
+      <Text style={styles.summaryRowLabel}>
+        {label}
+      </Text>
+
+      <Text style={styles.summaryRowValue}>
+        {value}
+      </Text>
     </View>
   );
 }
@@ -677,11 +1023,23 @@ type WorkoutDetailProps = {
   label: string;
 };
 
-function WorkoutDetail({ value, label }: WorkoutDetailProps) {
+function WorkoutDetail({
+  value,
+  label,
+}: WorkoutDetailProps) {
   return (
     <View style={styles.workoutDetail}>
-      <Text style={styles.workoutDetailValue}>{value}</Text>
-      <Text style={styles.workoutDetailLabel}>{label}</Text>
+      <Text
+        style={styles.workoutDetailValue}
+      >
+        {value}
+      </Text>
+
+      <Text
+        style={styles.workoutDetailLabel}
+      >
+        {label}
+      </Text>
     </View>
   );
 }
@@ -692,40 +1050,38 @@ type StatCardProps = {
   goal: string;
 };
 
-function StatCard({ title, value, goal }: StatCardProps) {
+function StatCard({
+  title,
+  value,
+  goal,
+}: StatCardProps) {
   return (
     <View style={styles.statCard}>
-      <Text style={styles.statTitle}>{title}</Text>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statGoal}>{goal}</Text>
-    </View>
-  );
-}
+      <Text style={styles.statTitle}>
+        {title}
+      </Text>
 
-type MealRowProps = {
-  title: string;
-  detail: string;
-  calories: string;
-};
+      <Text style={styles.statValue}>
+        {value}
+      </Text>
 
-function MealRow({ title, detail, calories }: MealRowProps) {
-  return (
-    <View style={styles.mealRow}>
-      <View>
-        <Text style={styles.mealTitle}>{title}</Text>
-        <Text style={styles.mealDetail}>{detail}</Text>
-      </View>
-
-      <Text style={styles.mealCalories}>{calories}</Text>
+      <Text style={styles.statGoal}>
+        {goal}
+      </Text>
     </View>
   );
 }
 
 function formatTime(totalSeconds: number) {
-  const minutes = Math.floor(totalSeconds / 60);
+  const minutes = Math.floor(
+    totalSeconds / 60
+  );
+
   const seconds = totalSeconds % 60;
 
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  return `${minutes}:${seconds
+    .toString()
+    .padStart(2, '0')}`;
 }
 
 const styles = StyleSheet.create({
@@ -787,7 +1143,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   progressFill: {
-    width: '62%',
     height: '100%',
     backgroundColor: '#FFFFFF',
     borderRadius: 8,
@@ -886,6 +1241,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  mealInfo: {
+    flex: 1,
+    paddingRight: 12,
   },
   mealTitle: {
     color: '#17211C',
