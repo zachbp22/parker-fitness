@@ -15,8 +15,12 @@ type MealType = 'Breakfast' | 'Lunch' | 'Dinner' | 'Snacks';
 type FoodItem = {
   id: string;
   name: string;
+  servingSize: string;
+  servingUnit: string;
   calories: number;
   protein: number;
+  carbs: number;
+  fat: number;
   meal: MealType;
 };
 
@@ -27,31 +31,48 @@ const mealTypes: MealType[] = [
   'Snacks',
 ];
 
+const startingFoods: FoodItem[] = [
+  {
+    id: '1',
+    name: 'Protein Shake',
+    servingSize: '1',
+    servingUnit: 'bottle',
+    calories: 220,
+    protein: 30,
+    carbs: 8,
+    fat: 4,
+    meal: 'Breakfast',
+  },
+  {
+    id: '2',
+    name: 'Chicken Rice Bowl',
+    servingSize: '1',
+    servingUnit: 'bowl',
+    calories: 510,
+    protein: 45,
+    carbs: 55,
+    fat: 14,
+    meal: 'Lunch',
+  },
+];
+
 export default function MealsScreen() {
-  const [foods, setFoods] = useState<FoodItem[]>([
-    {
-      id: '1',
-      name: 'Protein Shake',
-      calories: 220,
-      protein: 30,
-      meal: 'Breakfast',
-    },
-    {
-      id: '2',
-      name: 'Chicken Rice Bowl',
-      calories: 510,
-      protein: 45,
-      meal: 'Lunch',
-    },
-  ]);
+  const [foods, setFoods] = useState<FoodItem[]>(startingFoods);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedMeal, setSelectedMeal] =
     useState<MealType>('Breakfast');
 
+  const [editingFoodId, setEditingFoodId] =
+    useState<string | null>(null);
+
   const [foodName, setFoodName] = useState('');
+  const [servingSize, setServingSize] = useState('');
+  const [servingUnit, setServingUnit] = useState('');
   const [calories, setCalories] = useState('');
   const [protein, setProtein] = useState('');
+  const [carbs, setCarbs] = useState('');
+  const [fat, setFat] = useState('');
 
   const totalCalories = foods.reduce(
     (total, food) => total + food.calories,
@@ -63,43 +84,154 @@ export default function MealsScreen() {
     0
   );
 
-  function openAddFood(meal: MealType) {
-    setSelectedMeal(meal);
+  const totalCarbs = foods.reduce(
+    (total, food) => total + food.carbs,
+    0
+  );
+
+  const totalFat = foods.reduce(
+    (total, food) => total + food.fat,
+    0
+  );
+
+  function resetForm() {
     setFoodName('');
+    setServingSize('');
+    setServingUnit('');
     setCalories('');
     setProtein('');
+    setCarbs('');
+    setFat('');
+    setEditingFoodId(null);
+  }
+
+  function openAddFood(meal: MealType) {
+    resetForm();
+    setSelectedMeal(meal);
     setModalVisible(true);
+  }
+
+  function openEditFood(food: FoodItem) {
+    setEditingFoodId(food.id);
+    setSelectedMeal(food.meal);
+
+    setFoodName(food.name);
+    setServingSize(food.servingSize);
+    setServingUnit(food.servingUnit);
+    setCalories(food.calories.toString());
+    setProtein(food.protein.toString());
+    setCarbs(food.carbs.toString());
+    setFat(food.fat.toString());
+
+    setModalVisible(true);
+  }
+
+  function closeModal() {
+    setModalVisible(false);
+    resetForm();
   }
 
   function saveFood() {
     const parsedCalories = Number(calories);
     const parsedProtein = Number(protein);
+    const parsedCarbs = Number(carbs);
+    const parsedFat = Number(fat);
 
     if (!foodName.trim()) {
       Alert.alert('Food name required', 'Enter a food name.');
       return;
     }
 
-    if (!calories.trim() || Number.isNaN(parsedCalories)) {
-      Alert.alert('Calories required', 'Enter valid calories.');
+    if (!servingSize.trim()) {
+      Alert.alert(
+        'Serving size required',
+        'Enter a serving size.'
+      );
       return;
     }
 
-    if (!protein.trim() || Number.isNaN(parsedProtein)) {
-      Alert.alert('Protein required', 'Enter valid protein.');
+    if (!servingUnit.trim()) {
+      Alert.alert(
+        'Serving unit required',
+        'Enter a serving unit.'
+      );
       return;
     }
 
-    const newFood: FoodItem = {
-      id: Date.now().toString(),
+    if (
+      !calories.trim() ||
+      Number.isNaN(parsedCalories) ||
+      parsedCalories < 0
+    ) {
+      Alert.alert(
+        'Invalid calories',
+        'Enter valid calories.'
+      );
+      return;
+    }
+
+    if (
+      !protein.trim() ||
+      Number.isNaN(parsedProtein) ||
+      parsedProtein < 0
+    ) {
+      Alert.alert(
+        'Invalid protein',
+        'Enter valid protein.'
+      );
+      return;
+    }
+
+    if (
+      !carbs.trim() ||
+      Number.isNaN(parsedCarbs) ||
+      parsedCarbs < 0
+    ) {
+      Alert.alert(
+        'Invalid carbs',
+        'Enter valid carbohydrates.'
+      );
+      return;
+    }
+
+    if (
+      !fat.trim() ||
+      Number.isNaN(parsedFat) ||
+      parsedFat < 0
+    ) {
+      Alert.alert(
+        'Invalid fat',
+        'Enter valid fat.'
+      );
+      return;
+    }
+
+    const foodData: FoodItem = {
+      id: editingFoodId ?? Date.now().toString(),
       name: foodName.trim(),
+      servingSize: servingSize.trim(),
+      servingUnit: servingUnit.trim(),
       calories: parsedCalories,
       protein: parsedProtein,
+      carbs: parsedCarbs,
+      fat: parsedFat,
       meal: selectedMeal,
     };
 
-    setFoods((currentFoods) => [...currentFoods, newFood]);
-    setModalVisible(false);
+    if (editingFoodId) {
+      setFoods((currentFoods) =>
+        currentFoods.map((food) =>
+          food.id === editingFoodId ? foodData : food
+        )
+      );
+    } else {
+      setFoods((currentFoods) => [
+        ...currentFoods,
+        foodData,
+      ]);
+    }
+
+    closeModal();
   }
 
   function deleteFood(id: string) {
@@ -116,7 +248,9 @@ export default function MealsScreen() {
           style: 'destructive',
           onPress: () => {
             setFoods((currentFoods) =>
-              currentFoods.filter((food) => food.id !== id)
+              currentFoods.filter(
+                (food) => food.id !== id
+              )
             );
           },
         },
@@ -138,20 +272,31 @@ export default function MealsScreen() {
           Track today's nutrition.
         </Text>
 
-        <View style={styles.summaryCard}>
-          <View>
-            <Text style={styles.summaryLabel}>CALORIES</Text>
-            <Text style={styles.summaryValue}>
-              {totalCalories}
-            </Text>
-          </View>
+        <View style={styles.calorieCard}>
+          <Text style={styles.summaryLabel}>
+            CALORIES LOGGED
+          </Text>
 
-          <View>
-            <Text style={styles.summaryLabel}>PROTEIN</Text>
-            <Text style={styles.summaryValue}>
-              {totalProtein}g
-            </Text>
-          </View>
+          <Text style={styles.calorieValue}>
+            {totalCalories}
+          </Text>
+        </View>
+
+        <View style={styles.macroRow}>
+          <MacroCard
+            label="Protein"
+            value={`${totalProtein}g`}
+          />
+
+          <MacroCard
+            label="Carbs"
+            value={`${totalCarbs}g`}
+          />
+
+          <MacroCard
+            label="Fat"
+            value={`${totalFat}g`}
+          />
         </View>
 
         {mealTypes.map((meal) => {
@@ -160,14 +305,17 @@ export default function MealsScreen() {
           );
 
           const mealCalories = mealFoods.reduce(
-            (total, food) => total + food.calories,
+            (total, food) =>
+              total + food.calories,
             0
           );
 
           return (
             <View key={meal} style={styles.mealCard}>
               <View style={styles.mealHeader}>
-                <Text style={styles.mealTitle}>{meal}</Text>
+                <Text style={styles.mealTitle}>
+                  {meal}
+                </Text>
 
                 <Text style={styles.mealCalories}>
                   {mealCalories} cal
@@ -180,25 +328,59 @@ export default function MealsScreen() {
                 </Text>
               ) : (
                 mealFoods.map((food) => (
-                  <View key={food.id} style={styles.foodRow}>
-                    <View style={styles.foodInformation}>
+                  <View
+                    key={food.id}
+                    style={styles.foodRow}
+                  >
+                    <View
+                      style={styles.foodInformation}
+                    >
                       <Text style={styles.foodName}>
                         {food.name}
                       </Text>
 
-                      <Text style={styles.foodDetails}>
-                        {food.calories} cal • {food.protein}g protein
+                      <Text
+                        style={styles.servingText}
+                      >
+                        {food.servingSize}{' '}
+                        {food.servingUnit}
+                      </Text>
+
+                      <Text
+                        style={styles.foodDetails}
+                      >
+                        {food.calories} cal •{' '}
+                        {food.protein}g protein •{' '}
+                        {food.carbs}g carbs •{' '}
+                        {food.fat}g fat
                       </Text>
                     </View>
 
-                    <Pressable
-                      onPress={() => deleteFood(food.id)}
-                      hitSlop={10}
-                    >
-                      <Text style={styles.deleteText}>
-                        Delete
-                      </Text>
-                    </Pressable>
+                    <View style={styles.actions}>
+                      <Pressable
+                        onPress={() =>
+                          openEditFood(food)
+                        }
+                        hitSlop={8}
+                      >
+                        <Text style={styles.editText}>
+                          Edit
+                        </Text>
+                      </Pressable>
+
+                      <Pressable
+                        onPress={() =>
+                          deleteFood(food.id)
+                        }
+                        hitSlop={8}
+                      >
+                        <Text
+                          style={styles.deleteText}
+                        >
+                          Delete
+                        </Text>
+                      </Pressable>
+                    </View>
                   </View>
                 ))
               )}
@@ -220,7 +402,7 @@ export default function MealsScreen() {
         visible={modalVisible}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => setModalVisible(false)}
+        onRequestClose={closeModal}
       >
         <ScrollView
           style={styles.modalScreen}
@@ -228,49 +410,67 @@ export default function MealsScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <Text style={styles.modalTitle}>
-            Add Food
+            {editingFoodId
+              ? 'Edit Food'
+              : 'Add Food'}
           </Text>
 
           <Text style={styles.modalMeal}>
             {selectedMeal}
           </Text>
 
-          <Text style={styles.inputLabel}>
-            Food name
-          </Text>
-
-          <TextInput
-            style={styles.input}
+          <FormInput
+            label="Food name"
             value={foodName}
             onChangeText={setFoodName}
             placeholder="Example: Greek yogurt"
-            placeholderTextColor="#9AA39E"
           />
 
-          <Text style={styles.inputLabel}>
-            Calories
-          </Text>
+          <FormInput
+            label="Serving size"
+            value={servingSize}
+            onChangeText={setServingSize}
+            placeholder="Example: 1"
+            keyboardType="decimal-pad"
+          />
 
-          <TextInput
-            style={styles.input}
+          <FormInput
+            label="Serving unit"
+            value={servingUnit}
+            onChangeText={setServingUnit}
+            placeholder="Example: cup, oz, bottle"
+          />
+
+          <FormInput
+            label="Calories"
             value={calories}
             onChangeText={setCalories}
             placeholder="Example: 150"
-            placeholderTextColor="#9AA39E"
-            keyboardType="numeric"
+            keyboardType="decimal-pad"
           />
 
-          <Text style={styles.inputLabel}>
-            Protein (grams)
-          </Text>
-
-          <TextInput
-            style={styles.input}
+          <FormInput
+            label="Protein (g)"
             value={protein}
             onChangeText={setProtein}
             placeholder="Example: 20"
-            placeholderTextColor="#9AA39E"
-            keyboardType="numeric"
+            keyboardType="decimal-pad"
+          />
+
+          <FormInput
+            label="Carbs (g)"
+            value={carbs}
+            onChangeText={setCarbs}
+            placeholder="Example: 12"
+            keyboardType="decimal-pad"
+          />
+
+          <FormInput
+            label="Fat (g)"
+            value={fat}
+            onChangeText={setFat}
+            placeholder="Example: 4"
+            keyboardType="decimal-pad"
           />
 
           <Pressable
@@ -278,13 +478,15 @@ export default function MealsScreen() {
             onPress={saveFood}
           >
             <Text style={styles.saveButtonText}>
-              Save Food
+              {editingFoodId
+                ? 'Save Changes'
+                : 'Save Food'}
             </Text>
           </Pressable>
 
           <Pressable
             style={styles.cancelButton}
-            onPress={() => setModalVisible(false)}
+            onPress={closeModal}
           >
             <Text style={styles.cancelButtonText}>
               Cancel
@@ -292,6 +494,64 @@ export default function MealsScreen() {
           </Pressable>
         </ScrollView>
       </Modal>
+    </>
+  );
+}
+
+type MacroCardProps = {
+  label: string;
+  value: string;
+};
+
+function MacroCard({
+  label,
+  value,
+}: MacroCardProps) {
+  return (
+    <View style={styles.macroCard}>
+      <Text style={styles.macroLabel}>
+        {label}
+      </Text>
+
+      <Text style={styles.macroValue}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+type FormInputProps = {
+  label: string;
+  value: string;
+  onChangeText: (value: string) => void;
+  placeholder: string;
+  keyboardType?:
+    | 'default'
+    | 'decimal-pad'
+    | 'numeric';
+};
+
+function FormInput({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  keyboardType = 'default',
+}: FormInputProps) {
+  return (
+    <>
+      <Text style={styles.inputLabel}>
+        {label}
+      </Text>
+
+      <TextInput
+        style={styles.input}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor="#9AA39E"
+        keyboardType={keyboardType}
+      />
     </>
   );
 }
@@ -329,13 +589,11 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
 
-  summaryCard: {
+  calorieCard: {
     backgroundColor: '#1D4A32',
     borderRadius: 24,
     padding: 22,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 28,
+    marginBottom: 12,
   },
 
   summaryLabel: {
@@ -345,9 +603,35 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
 
-  summaryValue: {
+  calorieValue: {
     color: '#FFFFFF',
-    fontSize: 30,
+    fontSize: 42,
+    fontWeight: '900',
+    marginTop: 5,
+  },
+
+  macroRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 28,
+  },
+
+  macroCard: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 14,
+  },
+
+  macroLabel: {
+    color: '#6D7972',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+
+  macroValue: {
+    color: '#17211C',
+    fontSize: 20,
     fontWeight: '900',
     marginTop: 5,
   },
@@ -385,17 +669,13 @@ const styles = StyleSheet.create({
   },
 
   foodRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#E9ECEA',
   },
 
   foodInformation: {
-    flex: 1,
-    paddingRight: 12,
+    paddingRight: 8,
   },
 
   foodName: {
@@ -404,10 +684,30 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
+  servingText: {
+    color: '#557063',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 3,
+  },
+
   foodDetails: {
     color: '#77817C',
-    fontSize: 13,
+    fontSize: 12,
+    lineHeight: 18,
     marginTop: 4,
+  },
+
+  actions: {
+    flexDirection: 'row',
+    gap: 20,
+    marginTop: 10,
+  },
+
+  editText: {
+    color: '#2D6B48',
+    fontSize: 13,
+    fontWeight: '800',
   },
 
   deleteText: {
@@ -452,7 +752,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     marginTop: 5,
-    marginBottom: 28,
+    marginBottom: 18,
   },
 
   inputLabel: {
