@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   Modal,
@@ -9,6 +9,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
+
+import { loadFoods, saveFoods } from '@/services/storage';
 
 type MealType = 'Breakfast' | 'Lunch' | 'Dinner' | 'Snacks';
 
@@ -58,8 +60,10 @@ const startingFoods: FoodItem[] = [
 
 export default function MealsScreen() {
   const [foods, setFoods] = useState<FoodItem[]>(startingFoods);
+  const [storageLoaded, setStorageLoaded] = useState(false);
 
   const [modalVisible, setModalVisible] = useState(false);
+
   const [selectedMeal, setSelectedMeal] =
     useState<MealType>('Breakfast');
 
@@ -73,6 +77,42 @@ export default function MealsScreen() {
   const [protein, setProtein] = useState('');
   const [carbs, setCarbs] = useState('');
   const [fat, setFat] = useState('');
+
+  // Load saved food when the Meals screen opens.
+  useEffect(() => {
+    async function restoreFoods() {
+      try {
+        const savedFoods = await loadFoods<FoodItem>();
+
+        if (savedFoods !== null) {
+          setFoods(savedFoods);
+        }
+      } catch (error) {
+        console.error('Unable to restore foods:', error);
+      } finally {
+        setStorageLoaded(true);
+      }
+    }
+
+    restoreFoods();
+  }, []);
+
+  // Save food automatically whenever the food list changes.
+  useEffect(() => {
+    if (!storageLoaded) {
+      return;
+    }
+
+    async function persistFoods() {
+      try {
+        await saveFoods(foods);
+      } catch (error) {
+        console.error('Unable to save foods:', error);
+      }
+    }
+
+    persistFoods();
+  }, [foods, storageLoaded]);
 
   const totalCalories = foods.reduce(
     (total, food) => total + food.calories,
@@ -138,7 +178,10 @@ export default function MealsScreen() {
     const parsedFat = Number(fat);
 
     if (!foodName.trim()) {
-      Alert.alert('Food name required', 'Enter a food name.');
+      Alert.alert(
+        'Food name required',
+        'Enter a food name.'
+      );
       return;
     }
 
@@ -221,7 +264,9 @@ export default function MealsScreen() {
     if (editingFoodId) {
       setFoods((currentFoods) =>
         currentFoods.map((food) =>
-          food.id === editingFoodId ? foodData : food
+          food.id === editingFoodId
+            ? foodData
+            : food
         )
       );
     } else {
@@ -264,9 +309,13 @@ export default function MealsScreen() {
         style={styles.screen}
         contentContainerStyle={styles.content}
       >
-        <Text style={styles.brand}>PARKER FITNESS</Text>
+        <Text style={styles.brand}>
+          PARKER FITNESS
+        </Text>
 
-        <Text style={styles.title}>Meals</Text>
+        <Text style={styles.title}>
+          Meals
+        </Text>
 
         <Text style={styles.subtitle}>
           Track today's nutrition.
@@ -311,7 +360,10 @@ export default function MealsScreen() {
           );
 
           return (
-            <View key={meal} style={styles.mealCard}>
+            <View
+              key={meal}
+              style={styles.mealCard}
+            >
               <View style={styles.mealHeader}>
                 <Text style={styles.mealTitle}>
                   {meal}
@@ -339,16 +391,12 @@ export default function MealsScreen() {
                         {food.name}
                       </Text>
 
-                      <Text
-                        style={styles.servingText}
-                      >
+                      <Text style={styles.servingText}>
                         {food.servingSize}{' '}
                         {food.servingUnit}
                       </Text>
 
-                      <Text
-                        style={styles.foodDetails}
-                      >
+                      <Text style={styles.foodDetails}>
                         {food.calories} cal •{' '}
                         {food.protein}g protein •{' '}
                         {food.carbs}g carbs •{' '}
@@ -374,9 +422,7 @@ export default function MealsScreen() {
                         }
                         hitSlop={8}
                       >
-                        <Text
-                          style={styles.deleteText}
-                        >
+                        <Text style={styles.deleteText}>
                           Delete
                         </Text>
                       </Pressable>
