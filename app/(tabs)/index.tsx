@@ -22,22 +22,17 @@ import {
 } from '@/services/storage';
 
 import {
+  Exercise,
+  LEG_EXERCISES,
+  PULL_EXERCISES,
+  PUSH_EXERCISES,
+  WorkoutSet,
+} from '@/data/defaultworkouts';
+import {
   getTodaysWorkout,
   getTomorrowsWorkout,
 } from '@/data/workoutSchedule';
-type WorkoutSet = {
-  id: number;
-  weight: string;
-  reps: string;
-  completed: boolean;
-};
 
-type Exercise = {
-  id: number;
-  name: string;
-  muscle: string;
-  sets: WorkoutSet[];
-};
 
 type MealType = 'Breakfast' | 'Lunch' | 'Dinner' | 'Snacks';
 
@@ -56,165 +51,6 @@ type FoodItem = {
 };
 
 const WATER_GOAL = 96;
-
-const PUSH_EXERCISES: Exercise[] = [
-  {
-    id: 1,
-    name: 'Chest Press Machine',
-    muscle: 'Chest',
-    sets: [
-      { id: 1, weight: '80', reps: '12', completed: false },
-      { id: 2, weight: '80', reps: '12', completed: false },
-      { id: 3, weight: '80', reps: '10', completed: false },
-    ],
-  },
-  {
-    id: 2,
-    name: 'Shoulder Press Machine',
-    muscle: 'Shoulders',
-    sets: [
-      { id: 1, weight: '50', reps: '12', completed: false },
-      { id: 2, weight: '50', reps: '10', completed: false },
-      { id: 3, weight: '50', reps: '10', completed: false },
-    ],
-  },
-  {
-    id: 3,
-    name: 'Pec Deck',
-    muscle: 'Chest',
-    sets: [
-      { id: 1, weight: '70', reps: '12', completed: false },
-      { id: 2, weight: '70', reps: '12', completed: false },
-      { id: 3, weight: '70', reps: '10', completed: false },
-    ],
-  },
-  {
-    id: 4,
-    name: 'Cable Triceps Pushdown',
-    muscle: 'Triceps',
-    sets: [
-      { id: 1, weight: '40', reps: '12', completed: false },
-      { id: 2, weight: '40', reps: '12', completed: false },
-      { id: 3, weight: '40', reps: '10', completed: false },
-    ],
-  },
-  {
-    id: 5,
-    name: 'Abdominal Machine',
-    muscle: 'Core',
-    sets: [
-      { id: 1, weight: '50', reps: '15', completed: false },
-      { id: 2, weight: '50', reps: '15', completed: false },
-      { id: 3, weight: '50', reps: '15', completed: false },
-    ],
-  },
-];
-
-const PULL_EXERCISES: Exercise[] = [
-  {
-    id: 1,
-    name: 'Lat Pulldown',
-    muscle: 'Back',
-    sets: [
-      { id: 1, weight: '70', reps: '12', completed: false },
-      { id: 2, weight: '70', reps: '12', completed: false },
-      { id: 3, weight: '70', reps: '10', completed: false },
-    ],
-  },
-  {
-    id: 2,
-    name: 'Seated Row Machine',
-    muscle: 'Back',
-    sets: [
-      { id: 1, weight: '70', reps: '12', completed: false },
-      { id: 2, weight: '70', reps: '12', completed: false },
-      { id: 3, weight: '70', reps: '10', completed: false },
-    ],
-  },
-  {
-    id: 3,
-    name: 'Reverse Pec Deck',
-    muscle: 'Rear Delts',
-    sets: [
-      { id: 1, weight: '50', reps: '12', completed: false },
-      { id: 2, weight: '50', reps: '12', completed: false },
-      { id: 3, weight: '50', reps: '12', completed: false },
-    ],
-  },
-  {
-    id: 4,
-    name: 'Biceps Curl Machine',
-    muscle: 'Biceps',
-    sets: [
-      { id: 1, weight: '40', reps: '12', completed: false },
-      { id: 2, weight: '40', reps: '12', completed: false },
-      { id: 3, weight: '40', reps: '10', completed: false },
-    ],
-  },
-  {
-    id: 5,
-    name: 'Cable Hammer Curl',
-    muscle: 'Biceps',
-    sets: [
-      { id: 1, weight: '30', reps: '12', completed: false },
-      { id: 2, weight: '30', reps: '12', completed: false },
-      { id: 3, weight: '30', reps: '10', completed: false },
-    ],
-  },
-];
-
-const LEG_EXERCISES: Exercise[] = [
-  {
-    id: 1,
-    name: 'Leg Press',
-    muscle: 'Legs',
-    sets: [
-      { id: 1, weight: '100', reps: '12', completed: false },
-      { id: 2, weight: '100', reps: '12', completed: false },
-      { id: 3, weight: '100', reps: '10', completed: false },
-    ],
-  },
-  {
-    id: 2,
-    name: 'Leg Extension',
-    muscle: 'Quads',
-    sets: [
-      { id: 1, weight: '50', reps: '12', completed: false },
-      { id: 2, weight: '50', reps: '12', completed: false },
-      { id: 3, weight: '50', reps: '10', completed: false },
-    ],
-  },
-  {
-    id: 3,
-    name: 'Seated Leg Curl',
-    muscle: 'Hamstrings',
-    sets: [
-      { id: 1, weight: '50', reps: '12', completed: false },
-      { id: 2, weight: '50', reps: '12', completed: false },
-      { id: 3, weight: '50', reps: '10', completed: false },
-    ],
-  },
-  {
-    id: 4,
-    name: 'Calf Raise',
-    muscle: 'Calves',
-    sets: [
-      { id: 1, weight: '70', reps: '15', completed: false },
-      { id: 2, weight: '70', reps: '15', completed: false },
-      { id: 3, weight: '70', reps: '15', completed: false },
-    ],
-  },
-  {
-    id: 5,
-    name: 'Abdominal Machine',
-    muscle: 'Core',
-    sets: [
-      { id: 1, weight: '50', reps: '15', completed: false },
-      { id: 2, weight: '50', reps: '15', completed: false },
-      { id: 3, weight: '50', reps: '15', completed: false },
-    ],
-  },
-];
 
 
 function createFreshExercises(): Exercise[] {
@@ -963,7 +799,7 @@ const tomorrowsWorkout =
           {tomorrowsWorkout.description}
         </Text>
       </View>
-      
+
       <Text
         style={styles.sectionTitle}
       >
