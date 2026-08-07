@@ -10,8 +10,9 @@ export type Exercise = {
   name: string;
   muscle: string;
   sets: WorkoutSet[];
+  previousWeight?: string;
+  previousReps?: string;
 };
-
 export const PUSH_EXERCISES: Exercise[] = [
   {
     id: 1,

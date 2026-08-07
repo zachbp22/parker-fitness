@@ -771,3 +771,50 @@ export async function clearWorkouts(): Promise<void> {
     throw error;
   }
 }
+export async function loadLastExercisePerformance(
+  profileId: ProfileId,
+  exerciseName: string
+): Promise<StoredWorkoutExercise | null> {
+  try {
+    const workouts =
+      await loadWorkoutsForProfile(
+        profileId
+      );
+
+    const sortedWorkouts = [
+      ...workouts,
+    ].sort(
+      (a, b) =>
+        new Date(
+          b.completedAt
+        ).getTime() -
+        new Date(
+          a.completedAt
+        ).getTime()
+    );
+
+    for (const workout of sortedWorkouts) {
+      const exercise =
+        workout.exercises.find(
+          (item) =>
+            item.name === exerciseName &&
+            item.sets.some(
+              (set) => set.completed
+            )
+        );
+
+      if (exercise) {
+        return exercise;
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error(
+      'Error loading last exercise performance:',
+      error
+    );
+
+    throw error;
+  }
+}

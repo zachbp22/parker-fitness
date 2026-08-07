@@ -14,6 +14,7 @@ import {
   getTodayDate,
   loadActiveProfile,
   loadFoods,
+  loadLastExercisePerformance,
   ProfileId,
   PROFILES,
   saveActiveProfile,
@@ -253,21 +254,96 @@ const [exercises, setExercises] =
     );
   }, [exercises]);
 
-function startWorkout() {
-  setExercises(
-    createFreshExercises(activeProfile)
-  );
+async function startWorkout() {
+  const freshExercises =
+    createFreshExercises(activeProfile);
 
-    setWorkoutSeconds(0);
-    setRestSeconds(0);
+  try {
+    const exercisesWithHistory =
+      await Promise.all(
+        freshExercises.map(
+          async (exercise) => {
+            const previousExercise =
+              await loadLastExercisePerformance(
+                activeProfile,
+                exercise.name
+              );
+              
 
-    setWorkoutSaved(false);
-    setIsSavingWorkout(false);
+            if (!previousExercise) {
+              return exercise;
+            }
 
-    setWorkoutRunning(true);
+            const completedPreviousSets =
+              previousExercise.sets.filter(
+                (set) => set.completed
+              );
 
-    setScreen('workout');
+            if (
+              completedPreviousSets.length === 0
+            ) {
+              return exercise;
+            }
+
+          return {
+  ...exercise,
+
+  previousWeight:
+    completedPreviousSets[0].weight,
+
+  previousReps:
+    completedPreviousSets[0].reps,
+
+  sets: exercise.sets.map(
+    (workoutSet, setIndex) => {
+                  const previousSet =
+                    completedPreviousSets[
+                      Math.min(
+                        setIndex,
+                        completedPreviousSets.length -
+                          1
+                      )
+                    ];
+
+                  return {
+                    ...workoutSet,
+                    weight:
+                      previousSet.weight ||
+                      workoutSet.weight,
+                    reps:
+                      previousSet.reps ||
+                      workoutSet.reps,
+                    completed: false,
+                  };
+                }
+              ),
+            };
+          }
+        )
+      );
+
+    setExercises(
+      exercisesWithHistory
+    );
+  } catch (error) {
+    console.error(
+      'Unable to load previous workout performance:',
+      error
+    );
+
+    setExercises(freshExercises);
   }
+
+  setWorkoutSeconds(0);
+  setRestSeconds(0);
+
+  setWorkoutSaved(false);
+  setIsSavingWorkout(false);
+
+  setWorkoutRunning(true);
+
+  setScreen('workout');
+}
 
   function updateSet(
     exerciseId: number,
@@ -1261,7 +1337,15 @@ function ExerciseCard({
       >
         {exercise.name}
       </Text>
-
+{exercise.previousWeight &&
+  exercise.previousReps && (
+    <Text
+      style={styles.previousPerformance}
+    >
+      Previous: {exercise.previousWeight} lb ×{' '}
+      {exercise.previousReps} reps
+    </Text>
+  )}
       <View
         style={styles.setHeaderRow}
       >
@@ -2089,6 +2173,14 @@ buttonPressed: {
     marginTop: 6,
     marginBottom: 17,
   },
+ 
+previousPerformance: {
+  marginTop: -10,
+  marginBottom: 14,
+  fontSize: 13,
+  fontWeight: '600',
+  color: '#6B7280',
+},
   setHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
