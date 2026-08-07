@@ -3,6 +3,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const FOOD_STORAGE_KEY = '@parker_fitness_foods';
 const ACTIVE_PROFILE_KEY = '@parker_fitness_active_profile';
 const WORKOUT_STORAGE_KEY = '@parker_fitness_workouts';
+const FAVORITE_FOODS_STORAGE_KEY =
+  '@parker_fitness_favorite_foods';
 
 export type ProfileId = 'zach' | 'wife';
 
@@ -18,6 +20,20 @@ export type StoredFood = {
   meal: string;
   date?: string;
   profileId?: ProfileId;
+};
+
+export type FavoriteFood = {
+  id: string;
+  profileId: ProfileId;
+  name: string;
+  servingSize: string;
+  servingUnit: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+ source?: 'manual' | 'usda' | 'barcode';
+  usdaFoodId?: string;
 };
 
 export type Profile = {
@@ -104,16 +120,23 @@ export async function saveFoods<T>(
       jsonValue
     );
   } catch (error) {
-    console.error('Error saving foods:', error);
+    console.error(
+      'Error saving foods:',
+      error
+    );
+
     throw error;
   }
 }
 
-export async function loadFoods<T>(): Promise<T[] | null> {
+export async function loadFoods<T>(): Promise<
+  T[] | null
+> {
   try {
-    const jsonValue = await AsyncStorage.getItem(
-      FOOD_STORAGE_KEY
-    );
+    const jsonValue =
+      await AsyncStorage.getItem(
+        FOOD_STORAGE_KEY
+      );
 
     if (jsonValue === null) {
       return null;
@@ -121,7 +144,11 @@ export async function loadFoods<T>(): Promise<T[] | null> {
 
     return JSON.parse(jsonValue) as T[];
   } catch (error) {
-    console.error('Error loading foods:', error);
+    console.error(
+      'Error loading foods:',
+      error
+    );
+
     throw error;
   }
 }
@@ -129,10 +156,8 @@ export async function loadFoods<T>(): Promise<T[] | null> {
 export async function loadFoodsForDate<
   T extends {
     date?: string;
-  }
->(
-  date: string
-): Promise<T[]> {
+  },
+>(date: string): Promise<T[]> {
   try {
     const foods = await loadFoods<T>();
 
@@ -156,10 +181,8 @@ export async function loadFoodsForDate<
 export async function loadFoodsForProfile<
   T extends {
     profileId?: ProfileId;
-  }
->(
-  profileId: ProfileId
-): Promise<T[]> {
+  },
+>(profileId: ProfileId): Promise<T[]> {
   try {
     const foods = await loadFoods<T>();
 
@@ -168,7 +191,8 @@ export async function loadFoodsForProfile<
     }
 
     return foods.filter(
-      (food) => food.profileId === profileId
+      (food) =>
+        food.profileId === profileId
     );
   } catch (error) {
     console.error(
@@ -184,7 +208,7 @@ export async function loadFoodsForProfileAndDate<
   T extends {
     profileId?: ProfileId;
     date?: string;
-  }
+  },
 >(
   profileId: ProfileId,
   date: string
@@ -214,7 +238,7 @@ export async function loadFoodsForProfileAndDate<
 export async function addDateToExistingFoods<
   T extends {
     date?: string;
-  }
+  },
 >(): Promise<T[]> {
   try {
     const foods = await loadFoods<T>();
@@ -227,18 +251,20 @@ export async function addDateToExistingFoods<
 
     let changed = false;
 
-    const updatedFoods = foods.map((food) => {
-      if (food.date) {
-        return food;
+    const updatedFoods = foods.map(
+      (food) => {
+        if (food.date) {
+          return food;
+        }
+
+        changed = true;
+
+        return {
+          ...food,
+          date: today,
+        };
       }
-
-      changed = true;
-
-      return {
-        ...food,
-        date: today,
-      };
-    });
+    );
 
     if (changed) {
       await saveFoods(updatedFoods);
@@ -258,7 +284,7 @@ export async function addDateToExistingFoods<
 export async function addProfileToExistingFoods<
   T extends {
     profileId?: ProfileId;
-  }
+  },
 >(): Promise<T[]> {
   try {
     const foods = await loadFoods<T>();
@@ -269,18 +295,20 @@ export async function addProfileToExistingFoods<
 
     let changed = false;
 
-    const updatedFoods = foods.map((food) => {
-      if (food.profileId) {
-        return food;
+    const updatedFoods = foods.map(
+      (food) => {
+        if (food.profileId) {
+          return food;
+        }
+
+        changed = true;
+
+        return {
+          ...food,
+          profileId: 'zach' as ProfileId,
+        };
       }
-
-      changed = true;
-
-      return {
-        ...food,
-        profileId: 'zach' as ProfileId,
-      };
-    });
+    );
 
     if (changed) {
       await saveFoods(updatedFoods);
@@ -317,9 +345,183 @@ export async function clearFoods(): Promise<void> {
       FOOD_STORAGE_KEY
     );
   } catch (error) {
-    console.error('Error clearing foods:', error);
+    console.error(
+      'Error clearing foods:',
+      error
+    );
+
     throw error;
   }
+}
+
+/*
+ * ============================================================
+ * FAVORITE FOOD STORAGE
+ * ============================================================
+ */
+
+export async function saveFavoriteFoods(
+  favorites: FavoriteFood[]
+): Promise<void> {
+  try {
+    const jsonValue =
+      JSON.stringify(favorites);
+
+    await AsyncStorage.setItem(
+      FAVORITE_FOODS_STORAGE_KEY,
+      jsonValue
+    );
+  } catch (error) {
+    console.error(
+      'Error saving favorite foods:',
+      error
+    );
+
+    throw error;
+  }
+}
+
+export async function loadFavoriteFoods(): Promise<
+  FavoriteFood[]
+> {
+  try {
+    const jsonValue =
+      await AsyncStorage.getItem(
+        FAVORITE_FOODS_STORAGE_KEY
+      );
+
+    if (jsonValue === null) {
+      return [];
+    }
+
+    return JSON.parse(
+      jsonValue
+    ) as FavoriteFood[];
+  } catch (error) {
+    console.error(
+      'Error loading favorite foods:',
+      error
+    );
+
+    return [];
+  }
+}
+
+export async function loadFavoriteFoodsForProfile(
+  profileId: ProfileId
+): Promise<FavoriteFood[]> {
+  try {
+    const favorites =
+      await loadFavoriteFoods();
+
+    return favorites.filter(
+      (favorite) =>
+        favorite.profileId === profileId
+    );
+  } catch (error) {
+    console.error(
+      'Error loading favorite foods for profile:',
+      error
+    );
+
+    return [];
+  }
+}
+
+export async function addFavoriteFood(
+  favorite: FavoriteFood
+): Promise<void> {
+  try {
+    const favorites =
+      await loadFavoriteFoods();
+
+    const alreadyExists =
+      favorites.some(
+        (item) =>
+          item.profileId ===
+            favorite.profileId &&
+          favoriteFoodKey(item) ===
+            favoriteFoodKey(favorite)
+      );
+
+    if (alreadyExists) {
+      return;
+    }
+
+    await saveFavoriteFoods([
+      favorite,
+      ...favorites,
+    ]);
+  } catch (error) {
+    console.error(
+      'Error adding favorite food:',
+      error
+    );
+
+    throw error;
+  }
+}
+
+export async function removeFavoriteFood(
+  favoriteId: string
+): Promise<void> {
+  try {
+    const favorites =
+      await loadFavoriteFoods();
+
+    const updatedFavorites =
+      favorites.filter(
+        (favorite) =>
+          favorite.id !== favoriteId
+      );
+
+    await saveFavoriteFoods(
+      updatedFavorites
+    );
+  } catch (error) {
+    console.error(
+      'Error removing favorite food:',
+      error
+    );
+
+    throw error;
+  }
+}
+
+export async function clearFavoriteFoods(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(
+      FAVORITE_FOODS_STORAGE_KEY
+    );
+  } catch (error) {
+    console.error(
+      'Error clearing favorite foods:',
+      error
+    );
+
+    throw error;
+  }
+}
+
+function favoriteFoodKey(
+  food: Pick<
+    FavoriteFood,
+    | 'name'
+    | 'servingSize'
+    | 'servingUnit'
+    | 'usdaFoodId'
+  >
+): string {
+  return [
+    food.usdaFoodId ?? '',
+    food.name.trim().toLowerCase(),
+    food.servingSize
+      .trim()
+      .toLowerCase(),
+    food.servingUnit
+      .trim()
+      .toLowerCase(),
+  ].join('|');
 }
 
 /*
@@ -381,7 +583,8 @@ export async function saveWorkouts(
   workouts: StoredWorkout[]
 ): Promise<void> {
   try {
-    const jsonValue = JSON.stringify(workouts);
+    const jsonValue =
+      JSON.stringify(workouts);
 
     await AsyncStorage.setItem(
       WORKOUT_STORAGE_KEY,
@@ -401,9 +604,10 @@ export async function loadWorkouts(): Promise<
   StoredWorkout[]
 > {
   try {
-    const jsonValue = await AsyncStorage.getItem(
-      WORKOUT_STORAGE_KEY
-    );
+    const jsonValue =
+      await AsyncStorage.getItem(
+        WORKOUT_STORAGE_KEY
+      );
 
     if (jsonValue === null) {
       return [];
@@ -426,14 +630,17 @@ export async function addWorkout(
   workout: StoredWorkout
 ): Promise<void> {
   try {
-    const workouts = await loadWorkouts();
+    const workouts =
+      await loadWorkouts();
 
     const updatedWorkouts = [
       workout,
       ...workouts,
     ];
 
-    await saveWorkouts(updatedWorkouts);
+    await saveWorkouts(
+      updatedWorkouts
+    );
   } catch (error) {
     console.error(
       'Error adding workout:',
@@ -448,7 +655,8 @@ export async function loadWorkoutsForProfile(
   profileId: ProfileId
 ): Promise<StoredWorkout[]> {
   try {
-    const workouts = await loadWorkouts();
+    const workouts =
+      await loadWorkouts();
 
     return workouts.filter(
       (workout) =>
@@ -469,7 +677,8 @@ export async function loadWorkoutsForProfileAndDate(
   date: string
 ): Promise<StoredWorkout[]> {
   try {
-    const workouts = await loadWorkouts();
+    const workouts =
+      await loadWorkouts();
 
     return workouts.filter(
       (workout) =>
@@ -491,16 +700,24 @@ export async function loadLatestWorkoutForProfile(
 ): Promise<StoredWorkout | null> {
   try {
     const workouts =
-      await loadWorkoutsForProfile(profileId);
+      await loadWorkoutsForProfile(
+        profileId
+      );
 
     if (workouts.length === 0) {
       return null;
     }
 
-    const sortedWorkouts = [...workouts].sort(
+    const sortedWorkouts = [
+      ...workouts,
+    ].sort(
       (a, b) =>
-        new Date(b.completedAt).getTime() -
-        new Date(a.completedAt).getTime()
+        new Date(
+          b.completedAt
+        ).getTime() -
+        new Date(
+          a.completedAt
+        ).getTime()
     );
 
     return sortedWorkouts[0];
@@ -518,13 +735,18 @@ export async function deleteWorkout(
   workoutId: string
 ): Promise<void> {
   try {
-    const workouts = await loadWorkouts();
+    const workouts =
+      await loadWorkouts();
 
-    const updatedWorkouts = workouts.filter(
-      (workout) => workout.id !== workoutId
+    const updatedWorkouts =
+      workouts.filter(
+        (workout) =>
+          workout.id !== workoutId
+      );
+
+    await saveWorkouts(
+      updatedWorkouts
     );
-
-    await saveWorkouts(updatedWorkouts);
   } catch (error) {
     console.error(
       'Error deleting workout:',
