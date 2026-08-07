@@ -15,10 +15,11 @@ import {
   loadActiveProfile,
   loadFoods,
   loadLastExercisePerformance,
+  loadWorkoutsForProfile,
   ProfileId,
   PROFILES,
   saveActiveProfile,
-  StoredWorkout,
+  StoredWorkout
 } from '@/services/storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -141,6 +142,9 @@ const [exercises, setExercises] =
 
   const [isSavingWorkout, setIsSavingWorkout] = useState(false);
   const [workoutSaved, setWorkoutSaved] = useState(false);
+  const [newPRs, setNewPRs] = useState<
+  { exerciseName: string; weight: number }[]
+>([]);
 
   const loadDashboardFoods = useCallback(async () => {
     try {
@@ -362,6 +366,7 @@ suggestedWeight:
 
   setWorkoutSaved(false);
   setIsSavingWorkout(false);
+  setNewPRs([]);
 
   setWorkoutRunning(true);
 
@@ -532,8 +537,80 @@ suggestedWeight:
         })
       ),
     };
+const previousWorkouts =
+  await loadWorkoutsForProfile(
+    activeProfile
+  );
 
-    await addWorkout(workout);
+const detectedPRs: {
+  exerciseName: string;
+  weight: number;
+}[] = [];
+
+workout.exercises.forEach(
+  (currentExercise) => {
+    const completedCurrentWeights =
+      currentExercise.sets
+        .filter((set) => set.completed)
+        .map((set) => Number(set.weight))
+        .filter((weight) =>
+          Number.isFinite(weight)
+        );
+
+    if (
+      completedCurrentWeights.length === 0
+    ) {
+      return;
+    }
+
+    const currentMaxWeight = Math.max(
+      ...completedCurrentWeights
+    );
+
+    const previousWeights =
+      previousWorkouts.flatMap(
+        (previousWorkout) =>
+          previousWorkout.exercises
+            .filter(
+              (exercise) =>
+                exercise.name ===
+                currentExercise.name
+            )
+            .flatMap((exercise) =>
+              exercise.sets
+                .filter(
+                  (set) => set.completed
+                )
+                .map((set) =>
+                  Number(set.weight)
+                )
+                .filter((weight) =>
+                  Number.isFinite(weight)
+                )
+            )
+      );
+
+    const previousMaxWeight =
+      previousWeights.length > 0
+        ? Math.max(...previousWeights)
+        : 0;
+
+    if (
+      currentMaxWeight >
+      previousMaxWeight
+    ) {
+      detectedPRs.push({
+        exerciseName:
+          currentExercise.name,
+        weight: currentMaxWeight,
+      });
+    }
+  }
+);
+
+setNewPRs(detectedPRs);
+
+await addWorkout(workout);
 
     setWorkoutSaved(true);
 
@@ -624,6 +701,7 @@ async function changeActiveProfile(
         totalSets={totalSets}
         totalVolume={totalVolume}
         workoutSeconds={workoutSeconds}
+       newPRs={newPRs} 
         onDone={returnHome}
       />
     );
@@ -1531,6 +1609,10 @@ type WorkoutSummaryProps = {
   totalSets: number;
   totalVolume: number;
   workoutSeconds: number;
+  newPRs: {
+    exerciseName: string;
+    weight: number;
+  }[];
   onDone: () => void;
 };
 
@@ -1540,6 +1622,7 @@ function WorkoutSummary({
   totalSets,
   totalVolume,
   workoutSeconds,
+  newPRs,
   onDone,
 }: WorkoutSummaryProps) {
   const todaysWorkout =
@@ -1578,7 +1661,28 @@ function WorkoutSummary({
         Great job, {profileName}.
         {' '}Your {todaysWorkout.name} workout was saved.
       </Text>
+{newPRs.length > 0 && (
+  <View style={styles.prCard}>
+    <Text style={styles.prTitle}>
+      🏆 NEW PERSONAL RECORD
+    </Text>
 
+    {newPRs.map((pr) => (
+      <View
+        key={pr.exerciseName}
+        style={styles.prRow}
+      >
+        <Text style={styles.prExercise}>
+          {pr.exerciseName}
+        </Text>
+
+        <Text style={styles.prWeight}>
+          {pr.weight} lb
+        </Text>
+      </View>
+    ))}
+  </View>
+)}
       <View
         style={styles.summaryCard}
       >
@@ -2366,12 +2470,49 @@ suggestedPerformance: {
     marginTop: 9,
     marginBottom: 28,
   },
-  summaryCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    paddingHorizontal: 18,
-    marginBottom: 22,
-  },
+  prCard: {
+  backgroundColor: '#E4EEE8',
+  borderRadius: 20,
+  padding: 18,
+  marginBottom: 18,
+},
+
+prTitle: {
+  color: '#2D6B48',
+  fontSize: 13,
+  fontWeight: '900',
+  letterSpacing: 1,
+  marginBottom: 12,
+},
+
+prRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  marginTop: 4,
+},
+
+prExercise: {
+  color: '#17211C',
+  fontSize: 16,
+  fontWeight: '800',
+  flex: 1,
+  marginRight: 12,
+},
+
+prWeight: {
+  color: '#2D6B48',
+  fontSize: 18,
+  fontWeight: '900',
+},
+
+summaryCard: {
+  backgroundColor: '#FFFFFF',
+  borderRadius: 20,
+  paddingHorizontal: 18,
+  marginBottom: 22,
+},
+  
   summaryRow: {
     minHeight: 72,
     flexDirection: 'row',
