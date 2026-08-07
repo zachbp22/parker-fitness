@@ -18,9 +18,13 @@ import {
   ProfileId,
   PROFILES,
   saveActiveProfile,
-  StoredWorkout
+  StoredWorkout,
 } from '@/services/storage';
 
+import {
+  getTodaysWorkout,
+  getTomorrowsWorkout,
+} from '@/data/workoutSchedule';
 type WorkoutSet = {
   id: number;
   weight: string;
@@ -53,7 +57,7 @@ type FoodItem = {
 
 const WATER_GOAL = 96;
 
-const STARTING_EXERCISES: Exercise[] = [
+const PUSH_EXERCISES: Exercise[] = [
   {
     id: 1,
     name: 'Chest Press Machine',
@@ -106,19 +110,144 @@ const STARTING_EXERCISES: Exercise[] = [
   },
 ];
 
+const PULL_EXERCISES: Exercise[] = [
+  {
+    id: 1,
+    name: 'Lat Pulldown',
+    muscle: 'Back',
+    sets: [
+      { id: 1, weight: '70', reps: '12', completed: false },
+      { id: 2, weight: '70', reps: '12', completed: false },
+      { id: 3, weight: '70', reps: '10', completed: false },
+    ],
+  },
+  {
+    id: 2,
+    name: 'Seated Row Machine',
+    muscle: 'Back',
+    sets: [
+      { id: 1, weight: '70', reps: '12', completed: false },
+      { id: 2, weight: '70', reps: '12', completed: false },
+      { id: 3, weight: '70', reps: '10', completed: false },
+    ],
+  },
+  {
+    id: 3,
+    name: 'Reverse Pec Deck',
+    muscle: 'Rear Delts',
+    sets: [
+      { id: 1, weight: '50', reps: '12', completed: false },
+      { id: 2, weight: '50', reps: '12', completed: false },
+      { id: 3, weight: '50', reps: '12', completed: false },
+    ],
+  },
+  {
+    id: 4,
+    name: 'Biceps Curl Machine',
+    muscle: 'Biceps',
+    sets: [
+      { id: 1, weight: '40', reps: '12', completed: false },
+      { id: 2, weight: '40', reps: '12', completed: false },
+      { id: 3, weight: '40', reps: '10', completed: false },
+    ],
+  },
+  {
+    id: 5,
+    name: 'Cable Hammer Curl',
+    muscle: 'Biceps',
+    sets: [
+      { id: 1, weight: '30', reps: '12', completed: false },
+      { id: 2, weight: '30', reps: '12', completed: false },
+      { id: 3, weight: '30', reps: '10', completed: false },
+    ],
+  },
+];
+
+const LEG_EXERCISES: Exercise[] = [
+  {
+    id: 1,
+    name: 'Leg Press',
+    muscle: 'Legs',
+    sets: [
+      { id: 1, weight: '100', reps: '12', completed: false },
+      { id: 2, weight: '100', reps: '12', completed: false },
+      { id: 3, weight: '100', reps: '10', completed: false },
+    ],
+  },
+  {
+    id: 2,
+    name: 'Leg Extension',
+    muscle: 'Quads',
+    sets: [
+      { id: 1, weight: '50', reps: '12', completed: false },
+      { id: 2, weight: '50', reps: '12', completed: false },
+      { id: 3, weight: '50', reps: '10', completed: false },
+    ],
+  },
+  {
+    id: 3,
+    name: 'Seated Leg Curl',
+    muscle: 'Hamstrings',
+    sets: [
+      { id: 1, weight: '50', reps: '12', completed: false },
+      { id: 2, weight: '50', reps: '12', completed: false },
+      { id: 3, weight: '50', reps: '10', completed: false },
+    ],
+  },
+  {
+    id: 4,
+    name: 'Calf Raise',
+    muscle: 'Calves',
+    sets: [
+      { id: 1, weight: '70', reps: '15', completed: false },
+      { id: 2, weight: '70', reps: '15', completed: false },
+      { id: 3, weight: '70', reps: '15', completed: false },
+    ],
+  },
+  {
+    id: 5,
+    name: 'Abdominal Machine',
+    muscle: 'Core',
+    sets: [
+      { id: 1, weight: '50', reps: '15', completed: false },
+      { id: 2, weight: '50', reps: '15', completed: false },
+      { id: 3, weight: '50', reps: '15', completed: false },
+    ],
+  },
+];
+
+
 function createFreshExercises(): Exercise[] {
+  const todaysWorkout =
+    getTodaysWorkout();
+
+  let workoutExercises: Exercise[];
+
+  if (todaysWorkout.name === 'Pull Day') {
+    workoutExercises = PULL_EXERCISES;
+  } else if (
+    todaysWorkout.name === 'Legs & Core'
+  ) {
+    workoutExercises = LEG_EXERCISES;
+  } else {
+    workoutExercises = PUSH_EXERCISES;
+  }
+
   const workoutId = Date.now();
 
-  return STARTING_EXERCISES.map(
+  return workoutExercises.map(
     (exercise, exerciseIndex) => ({
       ...exercise,
+
       sets: exercise.sets.map(
         (workoutSet, setIndex) => ({
           ...workoutSet,
+
           id:
             workoutId +
             exerciseIndex * 100 +
             setIndex,
+
           completed: false,
         })
       ),
@@ -376,85 +505,87 @@ export default function HomeScreen() {
     );
   }
 
-  async function finishWorkout() {
-    if (completedSets === 0) {
-      Alert.alert(
-        'No completed sets',
-        'Complete at least one set before finishing the workout.'
-      );
+ async function finishWorkout() {
+  if (completedSets === 0) {
+    Alert.alert(
+      'No completed sets',
+      'Complete at least one set before finishing the workout.'
+    );
 
-      return;
-    }
-
-    if (
-      isSavingWorkout ||
-      workoutSaved
-    ) {
-      return;
-    }
-
-    setIsSavingWorkout(true);
-    setWorkoutRunning(false);
-    setRestSeconds(0);
-
-    try {
-      const completedAt = new Date();
-
-      const workout: StoredWorkout = {
-        id: `${activeProfile}-${completedAt.getTime()}`,
-        profileId: activeProfile,
-        date: getTodayDate(),
-        completedAt:
-          completedAt.toISOString(),
-        workoutName: 'Push Day',
-        workoutType: 'Upper Body',
-        durationSeconds:
-          workoutSeconds,
-        completedSets,
-        totalSets,
-        totalVolume,
-
-        exercises: exercises.map(
-          (exercise) => ({
-            id: exercise.id,
-            name: exercise.name,
-            muscle: exercise.muscle,
-
-            sets: exercise.sets.map(
-              (workoutSet) => ({
-                id: workoutSet.id,
-                weight:
-                  workoutSet.weight,
-                reps: workoutSet.reps,
-                completed:
-                  workoutSet.completed,
-              })
-            ),
-          })
-        ),
-      };
-
-      await addWorkout(workout);
-
-      setWorkoutSaved(true);
-
-      setScreen('summary');
-    } catch (error) {
-      console.error(
-        'Unable to save workout:',
-        error
-      );
-
-      setWorkoutRunning(true);
-
-      Alert.alert(
-        'Workout not saved',
-        'There was a problem saving your workout. Please try again.'
-      );
-    } finally {
-      setIsSavingWorkout(false);
-    }
+    return;
   }
+
+  if (
+    isSavingWorkout ||
+    workoutSaved
+  ) {
+    return;
+  }
+
+  setIsSavingWorkout(true);
+  setWorkoutRunning(false);
+  setRestSeconds(0);
+
+  try {
+    const completedAt = new Date();
+    const todaysWorkout =
+      getTodaysWorkout();
+
+    const workout: StoredWorkout = {
+      id: `${activeProfile}-${completedAt.getTime()}`,
+      profileId: activeProfile,
+      date: getTodayDate(),
+      completedAt:
+        completedAt.toISOString(),
+      workoutName: todaysWorkout.name,
+      workoutType: todaysWorkout.type,
+      durationSeconds:
+        workoutSeconds,
+      completedSets,
+      totalSets,
+      totalVolume,
+
+      exercises: exercises.map(
+        (exercise) => ({
+          id: exercise.id,
+          name: exercise.name,
+          muscle: exercise.muscle,
+
+          sets: exercise.sets.map(
+            (workoutSet) => ({
+              id: workoutSet.id,
+              weight:
+                workoutSet.weight,
+              reps: workoutSet.reps,
+              completed:
+                workoutSet.completed,
+            })
+          ),
+        })
+      ),
+    };
+
+    await addWorkout(workout);
+
+    setWorkoutSaved(true);
+
+    setScreen('summary');
+  } catch (error) {
+    console.error(
+      'Unable to save workout:',
+      error
+    );
+
+    setWorkoutRunning(true);
+
+    Alert.alert(
+      'Workout not saved',
+      'There was a problem saving your workout. Please try again.'
+    );
+  } finally {
+    setIsSavingWorkout(false);
+  }
+}
 
   function returnHome() {
     setScreen('home');
@@ -557,6 +688,11 @@ function HomeDashboard({
 }: HomeDashboardProps) {
   const currentProfile =
     PROFILES[activeProfile];
+    const todaysWorkout =
+  getTodaysWorkout();
+
+const tomorrowsWorkout =
+  getTomorrowsWorkout();
 
   const calorieGoal =
     currentProfile.calorieGoal;
@@ -741,23 +877,22 @@ function HomeDashboard({
 
       <View style={styles.whiteCard}>
         <Text
-          style={styles.workoutLabel}
-        >
-          UPPER BODY
-        </Text>
+  style={styles.workoutLabel}
+>
+  {todaysWorkout.type.toUpperCase()}
+</Text>
 
-        <Text
-          style={styles.workoutTitle}
-        >
-          Push Day
-        </Text>
+<Text
+  style={styles.workoutTitle}
+>
+  {todaysWorkout.name}
+</Text>
 
-        <Text
-          style={styles.cardDescription}
-        >
-          Chest press, shoulder press,
-          triceps and core
-        </Text>
+<Text
+  style={styles.cardDescription}
+>
+  {todaysWorkout.description}
+</Text>
 
         <View
           style={
@@ -797,7 +932,38 @@ function HomeDashboard({
           </Text>
         </Pressable>
       </View>
+      <Text style={styles.sectionTitle}>
+        Up next
+      </Text>
 
+      <View style={styles.nextWorkoutCard}>
+        <View style={styles.nextWorkoutHeader}>
+          <View style={styles.nextWorkoutInfo}>
+            <Text style={styles.nextWorkoutDay}>
+              TOMORROW
+            </Text>
+
+            <Text style={styles.nextWorkoutTitle}>
+              {tomorrowsWorkout.name}
+            </Text>
+
+            <Text style={styles.nextWorkoutType}>
+              {tomorrowsWorkout.type}
+            </Text>
+          </View>
+
+          <View style={styles.nextWorkoutBadge}>
+            <Text style={styles.nextWorkoutBadgeText}>
+              NEXT
+            </Text>
+          </View>
+        </View>
+
+        <Text style={styles.nextWorkoutDescription}>
+          {tomorrowsWorkout.description}
+        </Text>
+      </View>
+      
       <Text
         style={styles.sectionTitle}
       >
@@ -934,7 +1100,8 @@ type WorkoutScreenProps = {
   onStopRest: () => void;
 };
 
-function WorkoutScreen({
+
+ function WorkoutScreen({
   exercises,
   workoutSeconds,
   restSeconds,
@@ -958,6 +1125,9 @@ function WorkoutScreen({
             100
         );
 
+  const todaysWorkout =
+    getTodaysWorkout();
+
   return (
     <View style={styles.screen}>
       <ScrollView
@@ -975,7 +1145,7 @@ function WorkoutScreen({
                 styles.smallHeading
               }
             >
-              PUSH DAY
+              {todaysWorkout.name.toUpperCase()}
             </Text>
 
             <Text style={styles.title}>
@@ -1173,7 +1343,6 @@ function WorkoutScreen({
     </View>
   );
 }
-
 type ExerciseCardProps = {
   exercise: Exercise;
   exerciseNumber: number;
@@ -1384,6 +1553,9 @@ function WorkoutSummary({
   workoutSeconds,
   onDone,
 }: WorkoutSummaryProps) {
+  const todaysWorkout =
+    getTodaysWorkout();
+
   return (
     <ScrollView
       style={styles.screen}
@@ -1415,13 +1587,19 @@ function WorkoutSummary({
         }
       >
         Great job, {profileName}.
-        Your Push Day workout was
-        saved.
+        {' '}Your {todaysWorkout.name} workout was saved.
       </Text>
 
       <View
         style={styles.summaryCard}
       >
+        <SummaryRow
+          label="Workout"
+          value={todaysWorkout.name}
+        />
+
+        <View style={styles.divider} />
+
         <SummaryRow
           label="Duration"
           value={formatTime(
@@ -1787,9 +1965,72 @@ profileViewingText: {
     fontSize: 15,
     fontWeight: '800',
   },
-  buttonPressed: {
-    opacity: 0.75,
-  },
+
+
+nextWorkoutCard: {
+  backgroundColor: '#E4EEE8',
+  borderRadius: 20,
+  padding: 18,
+  marginBottom: 28,
+},
+
+nextWorkoutHeader: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'flex-start',
+},
+
+nextWorkoutInfo: {
+  flex: 1,
+  paddingRight: 12,
+},
+
+nextWorkoutDay: {
+  color: '#557063',
+  fontSize: 11,
+  fontWeight: '800',
+  letterSpacing: 1.2,
+},
+
+nextWorkoutTitle: {
+  color: '#17211C',
+  fontSize: 21,
+  fontWeight: '900',
+  marginTop: 5,
+},
+
+nextWorkoutType: {
+  color: '#34704D',
+  fontSize: 13,
+  fontWeight: '700',
+  marginTop: 3,
+},
+
+nextWorkoutDescription: {
+  color: '#6C7771',
+  fontSize: 14,
+  lineHeight: 20,
+  marginTop: 12,
+},
+
+nextWorkoutBadge: {
+  backgroundColor: '#FFFFFF',
+  borderRadius: 10,
+  paddingHorizontal: 10,
+  paddingVertical: 6,
+},
+
+nextWorkoutBadgeText: {
+  color: '#2D6B48',
+  fontSize: 10,
+  fontWeight: '900',
+  letterSpacing: 1,
+},
+
+buttonPressed: {
+  opacity: 0.75,
+},
+ 
   disabledButton: {
     opacity: 0.55,
   },
