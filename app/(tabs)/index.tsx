@@ -284,7 +284,23 @@ async function startWorkout() {
             ) {
               return exercise;
             }
+const previousWeight =
+  Number(
+    completedPreviousSets[0].weight
+  );
 
+const allSetsCompleted =
+  previousExercise.sets.length > 0 &&
+  previousExercise.sets.every(
+    (set) => set.completed
+  );
+
+const suggestedWeight =
+  Number.isFinite(previousWeight)
+    ? allSetsCompleted
+      ? previousWeight + 5
+      : previousWeight
+    : null;
           return {
   ...exercise,
 
@@ -293,7 +309,10 @@ async function startWorkout() {
 
   previousReps:
     completedPreviousSets[0].reps,
-
+suggestedWeight:
+  suggestedWeight !== null
+    ? String(suggestedWeight)
+    : undefined,
   sets: exercise.sets.map(
     (workoutSet, setIndex) => {
                   const previousSet =
@@ -1346,6 +1365,13 @@ function ExerciseCard({
       {exercise.previousReps} reps
     </Text>
   )}
+  {exercise.suggestedWeight && (
+  <Text
+    style={styles.suggestedPerformance}
+  >
+    Suggested next: {exercise.suggestedWeight} lb
+  </Text>
+)}
       <View
         style={styles.setHeaderRow}
       >
@@ -2176,10 +2202,17 @@ buttonPressed: {
  
 previousPerformance: {
   marginTop: -10,
-  marginBottom: 14,
+  marginBottom: 3,
   fontSize: 13,
   fontWeight: '600',
   color: '#6B7280',
+},
+
+suggestedPerformance: {
+  marginBottom: 14,
+  fontSize: 13,
+  fontWeight: '800',
+  color: '#34704D',
 },
   setHeaderRow: {
     flexDirection: 'row',

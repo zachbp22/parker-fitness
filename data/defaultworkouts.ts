@@ -4,7 +4,6 @@ export type WorkoutSet = {
   reps: string;
   completed: boolean;
 };
-
 export type Exercise = {
   id: number;
   name: string;
@@ -12,6 +11,7 @@ export type Exercise = {
   sets: WorkoutSet[];
   previousWeight?: string;
   previousReps?: string;
+  suggestedWeight?: string;
 };
 export const PUSH_EXERCISES: Exercise[] = [
   {
