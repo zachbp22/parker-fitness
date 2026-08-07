@@ -17,7 +17,8 @@ import {
   loadFoods,
   ProfileId,
   PROFILES,
-  StoredWorkout,
+  saveActiveProfile,
+  StoredWorkout
 } from '@/services/storage';
 
 type WorkoutSet = {
@@ -135,7 +136,7 @@ export default function HomeScreen() {
   const [foods, setFoods] = useState<FoodItem[]>([]);
 
   const [activeProfile, setActiveProfile] =
-    useState<ProfileId>('zach');
+  useState<ProfileId>('zach');
 
   const [workoutSeconds, setWorkoutSeconds] = useState(0);
   const [workoutRunning, setWorkoutRunning] = useState(false);
@@ -458,7 +459,34 @@ export default function HomeScreen() {
   function returnHome() {
     setScreen('home');
   }
+async function changeActiveProfile(
+  profileId: ProfileId
+) {
+  try {
+    await saveActiveProfile(profileId);
 
+    setActiveProfile(profileId);
+
+    const savedFoods =
+      await loadFoods<FoodItem>();
+
+    const today = getTodayDate();
+
+    const todaysProfileFoods =
+      (savedFoods ?? []).filter(
+        (food) =>
+          food.date === today &&
+          food.profileId === profileId
+      );
+
+    setFoods(todaysProfileFoods);
+  } catch (error) {
+    console.error(
+      'Unable to change active profile:',
+      error
+    );
+  }
+}
   if (screen === 'workout') {
     return (
       <WorkoutScreen
@@ -503,23 +531,28 @@ export default function HomeScreen() {
   }
 
   return (
-    <HomeDashboard
-      foods={foods}
-      activeProfile={activeProfile}
-      onStartWorkout={startWorkout}
-    />
-  );
+  <HomeDashboard
+    foods={foods}
+    activeProfile={activeProfile}
+    onProfileChange={changeActiveProfile}
+    onStartWorkout={startWorkout}
+  />
+);
 }
 
 type HomeDashboardProps = {
   foods: FoodItem[];
   activeProfile: ProfileId;
+  onProfileChange: (
+    profileId: ProfileId
+  ) => void;
   onStartWorkout: () => void;
 };
 
 function HomeDashboard({
   foods,
   activeProfile,
+  onProfileChange,
   onStartWorkout,
 }: HomeDashboardProps) {
   const currentProfile =
@@ -586,14 +619,66 @@ function HomeDashboard({
       </Text>
 
       <Text style={styles.title}>
-        Good morning,{' '}
-        {currentProfile.name}
-      </Text>
+  {getGreeting()},{' '}
+  {currentProfile.name}
+</Text>
 
       <Text style={styles.subtitle}>
         Here is today's progress.
       </Text>
+<View style={styles.profileCard}>
+  <Text style={styles.profileLabel}>
+    ACTIVE PROFILE
+  </Text>
 
+  <View style={styles.profileSelector}>
+    <Pressable
+      style={[
+        styles.profileButton,
+        activeProfile === 'zach' &&
+          styles.profileButtonActive,
+      ]}
+      onPress={() =>
+        onProfileChange('zach')
+      }
+    >
+      <Text
+        style={[
+          styles.profileButtonText,
+          activeProfile === 'zach' &&
+            styles.profileButtonTextActive,
+        ]}
+      >
+        Zach
+      </Text>
+    </Pressable>
+
+    <Pressable
+      style={[
+        styles.profileButton,
+        activeProfile === 'wife' &&
+          styles.profileButtonActive,
+      ]}
+      onPress={() =>
+        onProfileChange('wife')
+      }
+    >
+      <Text
+        style={[
+          styles.profileButtonText,
+          activeProfile === 'wife' &&
+            styles.profileButtonTextActive,
+        ]}
+      >
+        Wife
+      </Text>
+    </Pressable>
+  </View>
+
+  <Text style={styles.profileViewingText}>
+    Viewing {currentProfile.name}'s dashboard
+  </Text>
+</View>
       <View style={styles.mainCard}>
         <Text style={styles.cardLabel}>
           CALORIES REMAINING
@@ -1474,6 +1559,20 @@ function StatCard({
     </View>
   );
 }
+function getGreeting() {
+  const hour = new Date().getHours();
+
+  if (hour < 12) {
+    return 'Good morning';
+  }
+
+  if (hour < 17) {
+    return 'Good afternoon';
+  }
+
+  return 'Good evening';
+}
+
 
 function formatTime(
   totalSeconds: number
@@ -1517,6 +1616,56 @@ const styles = StyleSheet.create({
     marginTop: 6,
     marginBottom: 24,
   },
+  profileCard: {
+  backgroundColor: '#FFFFFF',
+  borderRadius: 20,
+  padding: 16,
+  marginBottom: 20,
+},
+
+profileLabel: {
+  color: '#557063',
+  fontSize: 12,
+  fontWeight: '700',
+  letterSpacing: 1.5,
+  marginBottom: 10,
+},
+
+profileSelector: {
+  flexDirection: 'row',
+  backgroundColor: '#E9EEEB',
+  borderRadius: 16,
+  padding: 4,
+},
+
+profileButton: {
+  flex: 1,
+  paddingVertical: 13,
+  borderRadius: 13,
+  alignItems: 'center',
+},
+
+profileButtonActive: {
+  backgroundColor: '#2D6B48',
+},
+
+profileButtonText: {
+  color: '#557063',
+  fontSize: 15,
+  fontWeight: '800',
+},
+
+profileButtonTextActive: {
+  color: '#FFFFFF',
+},
+
+profileViewingText: {
+  color: '#6D7972',
+  fontSize: 14,
+  fontWeight: '600',
+  textAlign: 'center',
+  marginTop: 12,
+},
   mainCard: {
     backgroundColor: '#1D4A32',
     borderRadius: 24,
