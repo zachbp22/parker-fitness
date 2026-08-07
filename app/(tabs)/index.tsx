@@ -313,6 +313,10 @@ suggestedWeight:
   suggestedWeight !== null
     ? String(suggestedWeight)
     : undefined,
+     progressionStatus:
+  allSetsCompleted
+    ? ('increase' as const)
+    : ('hold' as const),
   sets: exercise.sets.map(
     (workoutSet, setIndex) => {
                   const previousSet =
@@ -1365,13 +1369,16 @@ function ExerciseCard({
       {exercise.previousReps} reps
     </Text>
   )}
-  {exercise.suggestedWeight && (
-  <Text
-    style={styles.suggestedPerformance}
-  >
-    Suggested next: {exercise.suggestedWeight} lb
-  </Text>
-)}
+{exercise.suggestedWeight &&
+  exercise.progressionStatus && (
+    <Text
+      style={styles.suggestedPerformance}
+    >
+      {exercise.progressionStatus === 'increase'
+        ? `Ready to increase → ${exercise.suggestedWeight} lb`
+        : `Hold at ${exercise.suggestedWeight} lb`}
+    </Text>
+  )}
       <View
         style={styles.setHeaderRow}
       >

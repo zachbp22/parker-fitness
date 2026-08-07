@@ -12,6 +12,7 @@ export type Exercise = {
   previousWeight?: string;
   previousReps?: string;
   suggestedWeight?: string;
+  progressionStatus?: 'hold' | 'increase';
 };
 export const PUSH_EXERCISES: Exercise[] = [
   {
