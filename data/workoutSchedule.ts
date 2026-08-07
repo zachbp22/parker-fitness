@@ -1,3 +1,5 @@
+import { ProfileId } from '@/services/storage';
+
 export type ScheduledWorkout = {
   name: string;
   type: string;
@@ -5,10 +7,12 @@ export type ScheduledWorkout = {
   isRestDay?: boolean;
 };
 
-export const WORKOUT_SCHEDULE: Record<
+export type WeeklyWorkoutSchedule = Record<
   number,
   ScheduledWorkout
-> = {
+>;
+
+const ZACH_WORKOUT_SCHEDULE: WeeklyWorkoutSchedule = {
   0: {
     name: 'Rest Day',
     type: 'Recovery',
@@ -59,23 +63,96 @@ export const WORKOUT_SCHEDULE: Record<
       'Quads, hamstrings, glutes and core.',
   },
 };
+const WIFE_WORKOUT_SCHEDULE: WeeklyWorkoutSchedule = {
+  0: {
+    name: 'Rest Day',
+    type: 'Recovery',
+    description:
+      'Complete rest or light walking and mobility.',
+    isRestDay: true,
+  },
+
+  1: {
+    name: 'Full Body A',
+    type: 'Strength',
+    description:
+      'Full-body strength with legs, chest, back and core.',
+  },
+
+  2: {
+    name: 'Cardio & Core',
+    type: 'Conditioning',
+    description:
+      'Low-impact cardio followed by focused core work.',
+  },
+
+  3: {
+    name: 'Full Body B',
+    type: 'Strength',
+    description:
+      'Full-body strength with glutes, back, shoulders and core.',
+  },
+
+  4: {
+    name: 'Recovery Day',
+    type: 'Recovery',
+    description:
+      'Light walking, mobility and recovery.',
+    isRestDay: true,
+  },
+
+  5: {
+    name: 'Full Body C',
+    type: 'Strength',
+    description:
+      'Full-body strength with legs, upper body and core.',
+  },
+
+  6: {
+    name: 'Cardio & Core',
+    type: 'Conditioning',
+    description:
+      'Low-impact cardio followed by focused core work.',
+  },
+};
+
+export const WORKOUT_SCHEDULES: Record<
+  ProfileId,
+  WeeklyWorkoutSchedule
+> = {
+  zach: ZACH_WORKOUT_SCHEDULE,
+  wife: WIFE_WORKOUT_SCHEDULE,
+};
 
 export function getWorkoutForDate(
-  date: Date
+  date: Date,
+  profileId: ProfileId = 'zach'
 ): ScheduledWorkout {
-  return WORKOUT_SCHEDULE[date.getDay()];
+  return WORKOUT_SCHEDULES[profileId][
+    date.getDay()
+  ];
 }
 
-export function getTodaysWorkout() {
-  return getWorkoutForDate(new Date());
+export function getTodaysWorkout(
+  profileId: ProfileId = 'zach'
+): ScheduledWorkout {
+  return getWorkoutForDate(
+    new Date(),
+    profileId
+  );
 }
 
-export function getTomorrowsWorkout() {
+export function getTomorrowsWorkout(
+  profileId: ProfileId = 'zach'
+): ScheduledWorkout {
   const tomorrow = new Date();
 
   tomorrow.setDate(
     tomorrow.getDate() + 1
   );
 
-  return getWorkoutForDate(tomorrow);
+  return getWorkoutForDate(
+    tomorrow,
+    profileId
+  );
 }

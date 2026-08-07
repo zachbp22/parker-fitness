@@ -1,3 +1,24 @@
+import {
+  Exercise,
+  LEG_EXERCISES,
+  PULL_EXERCISES,
+  PUSH_EXERCISES,
+  WIFE_CARDIO_CORE,
+  WIFE_FULL_BODY_A,
+  WIFE_FULL_BODY_B,
+  WIFE_FULL_BODY_C,
+  WorkoutSet,
+} from '@/data/defaultworkouts';
+import {
+  addWorkout,
+  getTodayDate,
+  loadActiveProfile,
+  loadFoods,
+  ProfileId,
+  PROFILES,
+  saveActiveProfile,
+  StoredWorkout,
+} from '@/services/storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -10,24 +31,6 @@ import {
   View,
 } from 'react-native';
 
-import {
-  addWorkout,
-  getTodayDate,
-  loadActiveProfile,
-  loadFoods,
-  ProfileId,
-  PROFILES,
-  saveActiveProfile,
-  StoredWorkout,
-} from '@/services/storage';
-
-import {
-  Exercise,
-  LEG_EXERCISES,
-  PULL_EXERCISES,
-  PUSH_EXERCISES,
-  WorkoutSet,
-} from '@/data/defaultworkouts';
 import {
   getTodaysWorkout,
   getTomorrowsWorkout,
@@ -52,21 +55,46 @@ type FoodItem = {
 
 const WATER_GOAL = 96;
 
-
-function createFreshExercises(): Exercise[] {
+function createFreshExercises(
+  profileId: ProfileId = 'zach'
+): Exercise[] {
   const todaysWorkout =
-    getTodaysWorkout();
+    getTodaysWorkout(profileId);
 
   let workoutExercises: Exercise[];
 
-  if (todaysWorkout.name === 'Pull Day') {
-    workoutExercises = PULL_EXERCISES;
-  } else if (
-    todaysWorkout.name === 'Legs & Core'
-  ) {
-    workoutExercises = LEG_EXERCISES;
+  if (profileId === 'wife') {
+    if (todaysWorkout.name === 'Full Body A') {
+      workoutExercises = WIFE_FULL_BODY_A;
+    } else if (
+      todaysWorkout.name === 'Full Body B'
+    ) {
+      workoutExercises = WIFE_FULL_BODY_B;
+    } else if (
+      todaysWorkout.name === 'Full Body C'
+    ) {
+      workoutExercises = WIFE_FULL_BODY_C;
+    } else if (
+      todaysWorkout.name === 'Cardio & Core'
+    ) {
+      workoutExercises = WIFE_CARDIO_CORE;
+    } else {
+      workoutExercises = [];
+    }
   } else {
-    workoutExercises = PUSH_EXERCISES;
+    if (todaysWorkout.name === 'Pull Day') {
+      workoutExercises = PULL_EXERCISES;
+    } else if (
+      todaysWorkout.name === 'Legs & Core'
+    ) {
+      workoutExercises = LEG_EXERCISES;
+    } else if (
+      todaysWorkout.name === 'Push Day'
+    ) {
+      workoutExercises = PUSH_EXERCISES;
+    } else {
+      workoutExercises = [];
+    }
   }
 
   const workoutId = Date.now();
@@ -91,12 +119,15 @@ function createFreshExercises(): Exercise[] {
   );
 }
 
+
 export default function HomeScreen() {
   const [screen, setScreen] =
     useState<'home' | 'workout' | 'summary'>('home');
 
-  const [exercises, setExercises] =
-    useState<Exercise[]>(createFreshExercises());
+const [exercises, setExercises] =
+  useState<Exercise[]>(() =>
+    createFreshExercises('zach')
+  );
 
   const [foods, setFoods] = useState<FoodItem[]>([]);
 
@@ -222,8 +253,10 @@ export default function HomeScreen() {
     );
   }, [exercises]);
 
-  function startWorkout() {
-    setExercises(createFreshExercises());
+function startWorkout() {
+  setExercises(
+    createFreshExercises(activeProfile)
+  );
 
     setWorkoutSeconds(0);
     setRestSeconds(0);
@@ -364,8 +397,8 @@ export default function HomeScreen() {
 
   try {
     const completedAt = new Date();
-    const todaysWorkout =
-      getTodaysWorkout();
+  const todaysWorkout =
+  getTodaysWorkout(activeProfile);
 
     const workout: StoredWorkout = {
       id: `${activeProfile}-${completedAt.getTime()}`,
@@ -524,11 +557,11 @@ function HomeDashboard({
 }: HomeDashboardProps) {
   const currentProfile =
     PROFILES[activeProfile];
-    const todaysWorkout =
-  getTodaysWorkout();
+   const todaysWorkout =
+  getTodaysWorkout(activeProfile);
 
 const tomorrowsWorkout =
-  getTomorrowsWorkout();
+  getTomorrowsWorkout(activeProfile);
 
   const calorieGoal =
     currentProfile.calorieGoal;
@@ -750,23 +783,26 @@ const tomorrowsWorkout =
             label="Minutes"
           />
         </View>
-
-        <Pressable
-          style={({ pressed }) => [
-            styles.startButton,
-            pressed &&
-              styles.buttonPressed,
-          ]}
-          onPress={onStartWorkout}
-        >
-          <Text
-            style={
-              styles.startButtonText
-            }
-          >
-            Start workout
-          </Text>
-        </Pressable>
+{todaysWorkout.isRestDay ? (
+  <View style={styles.restDayMessage}>
+    <Text style={styles.restDayMessageText}>
+      Recovery day — no workout scheduled
+    </Text>
+  </View>
+) : (
+  <Pressable
+    style={({ pressed }) => [
+      styles.startButton,
+      pressed && styles.buttonPressed,
+    ]}
+    onPress={onStartWorkout}
+  >
+    <Text style={styles.startButtonText}>
+      Start workout
+    </Text>
+  </Pressable>
+)}
+        
       </View>
       <Text style={styles.sectionTitle}>
         Up next
@@ -1790,18 +1826,32 @@ profileViewingText: {
     fontSize: 11,
     marginTop: 3,
   },
-  startButton: {
-    backgroundColor: '#2D6B48',
-    borderRadius: 14,
-    paddingVertical: 15,
-    alignItems: 'center',
-  },
-  startButtonText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '800',
-  },
+startButton: {
+  backgroundColor: '#2D6B48',
+  borderRadius: 14,
+  paddingVertical: 15,
+  alignItems: 'center',
+},
 
+startButtonText: {
+  color: '#FFFFFF',
+  fontSize: 15,
+  fontWeight: '800',
+},
+
+restDayMessage: {
+  backgroundColor: '#E4EEE8',
+  borderRadius: 12,
+  paddingVertical: 13,
+  paddingHorizontal: 16,
+  alignItems: 'center',
+},
+
+restDayMessageText: {
+  color: '#34704D',
+  fontSize: 14,
+  fontWeight: '700',
+},
 
 nextWorkoutCard: {
   backgroundColor: '#E4EEE8',

@@ -170,3 +170,192 @@ export const LEG_EXERCISES: Exercise[] = [
     ],
   },
 ];
+export const WIFE_FULL_BODY_A: Exercise[] = [
+  {
+    id: 1,
+    name: 'Leg Press',
+    muscle: 'Legs',
+    sets: [
+      { id: 1, weight: '40', reps: '12', completed: false },
+      { id: 2, weight: '40', reps: '12', completed: false },
+      { id: 3, weight: '40', reps: '12', completed: false },
+    ],
+  },
+  {
+    id: 2,
+    name: 'Chest Press Machine',
+    muscle: 'Chest',
+    sets: [
+      { id: 1, weight: '20', reps: '12', completed: false },
+      { id: 2, weight: '20', reps: '12', completed: false },
+      { id: 3, weight: '20', reps: '12', completed: false },
+    ],
+  },
+  {
+    id: 3,
+    name: 'Lat Pulldown',
+    muscle: 'Back',
+    sets: [
+      { id: 1, weight: '30', reps: '12', completed: false },
+      { id: 2, weight: '30', reps: '12', completed: false },
+      { id: 3, weight: '30', reps: '12', completed: false },
+    ],
+  },
+  {
+    id: 4,
+    name: 'Seated Leg Curl',
+    muscle: 'Hamstrings',
+    sets: [
+      { id: 1, weight: '20', reps: '12', completed: false },
+      { id: 2, weight: '20', reps: '12', completed: false },
+      { id: 3, weight: '20', reps: '12', completed: false },
+    ],
+  },
+  {
+    id: 5,
+    name: 'Abdominal Machine',
+    muscle: 'Core',
+    sets: [
+      { id: 1, weight: '20', reps: '15', completed: false },
+      { id: 2, weight: '20', reps: '15', completed: false },
+      { id: 3, weight: '20', reps: '15', completed: false },
+    ],
+  },
+];
+
+export const WIFE_FULL_BODY_B: Exercise[] = [
+  {
+    id: 1,
+    name: 'Leg Press',
+    muscle: 'Glutes & Legs',
+    sets: [
+      { id: 1, weight: '40', reps: '12', completed: false },
+      { id: 2, weight: '40', reps: '12', completed: false },
+      { id: 3, weight: '40', reps: '12', completed: false },
+    ],
+  },
+  {
+    id: 2,
+    name: 'Seated Row Machine',
+    muscle: 'Back',
+    sets: [
+      { id: 1, weight: '30', reps: '12', completed: false },
+      { id: 2, weight: '30', reps: '12', completed: false },
+      { id: 3, weight: '30', reps: '12', completed: false },
+    ],
+  },
+  {
+    id: 3,
+    name: 'Shoulder Press Machine',
+    muscle: 'Shoulders',
+    sets: [
+      { id: 1, weight: '15', reps: '12', completed: false },
+      { id: 2, weight: '15', reps: '12', completed: false },
+      { id: 3, weight: '15', reps: '12', completed: false },
+    ],
+  },
+  {
+    id: 4,
+    name: 'Leg Extension',
+    muscle: 'Quads',
+    sets: [
+      { id: 1, weight: '20', reps: '12', completed: false },
+      { id: 2, weight: '20', reps: '12', completed: false },
+      { id: 3, weight: '20', reps: '12', completed: false },
+    ],
+  },
+  {
+    id: 5,
+    name: 'Abdominal Machine',
+    muscle: 'Core',
+    sets: [
+      { id: 1, weight: '20', reps: '15', completed: false },
+      { id: 2, weight: '20', reps: '15', completed: false },
+      { id: 3, weight: '20', reps: '15', completed: false },
+    ],
+  },
+];
+
+export const WIFE_FULL_BODY_C: Exercise[] = [
+  {
+    id: 1,
+    name: 'Leg Press',
+    muscle: 'Legs',
+    sets: [
+      { id: 1, weight: '40', reps: '12', completed: false },
+      { id: 2, weight: '40', reps: '12', completed: false },
+      { id: 3, weight: '40', reps: '12', completed: false },
+    ],
+  },
+  {
+    id: 2,
+    name: 'Chest Press Machine',
+    muscle: 'Chest',
+    sets: [
+      { id: 1, weight: '20', reps: '12', completed: false },
+      { id: 2, weight: '20', reps: '12', completed: false },
+      { id: 3, weight: '20', reps: '12', completed: false },
+    ],
+  },
+  {
+    id: 3,
+    name: 'Seated Row Machine',
+    muscle: 'Back',
+    sets: [
+      { id: 1, weight: '30', reps: '12', completed: false },
+      { id: 2, weight: '30', reps: '12', completed: false },
+      { id: 3, weight: '30', reps: '12', completed: false },
+    ],
+  },
+  {
+    id: 4,
+    name: 'Seated Leg Curl',
+    muscle: 'Hamstrings',
+    sets: [
+      { id: 1, weight: '20', reps: '12', completed: false },
+      { id: 2, weight: '20', reps: '12', completed: false },
+      { id: 3, weight: '20', reps: '12', completed: false },
+    ],
+  },
+  {
+    id: 5,
+    name: 'Abdominal Machine',
+    muscle: 'Core',
+    sets: [
+      { id: 1, weight: '20', reps: '15', completed: false },
+      { id: 2, weight: '20', reps: '15', completed: false },
+      { id: 3, weight: '20', reps: '15', completed: false },
+    ],
+  },
+];
+
+export const WIFE_CARDIO_CORE: Exercise[] = [
+  {
+    id: 1,
+    name: 'Treadmill Walk',
+    muscle: 'Cardio',
+    sets: [
+      { id: 1, weight: '0', reps: '20', completed: false },
+    ],
+  },
+  {
+    id: 2,
+    name: 'Abdominal Machine',
+    muscle: 'Core',
+    sets: [
+      { id: 1, weight: '20', reps: '15', completed: false },
+      { id: 2, weight: '20', reps: '15', completed: false },
+      { id: 3, weight: '20', reps: '15', completed: false },
+    ],
+  },
+  {
+    id: 3,
+    name: 'Back Extension',
+    muscle: 'Core',
+    sets: [
+      { id: 1, weight: '20', reps: '12', completed: false },
+      { id: 2, weight: '20', reps: '12', completed: false },
+      { id: 3, weight: '20', reps: '12', completed: false },
+    ],
+  },
+];
