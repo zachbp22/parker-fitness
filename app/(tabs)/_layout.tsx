@@ -58,6 +58,13 @@ export default function TabLayout() {
           ),
         }}
       />
+
+      <Tabs.Screen
+        name="usda-test"
+        options={{
+          href: null,
+        }}
+      />
     </Tabs>
   );
 }
