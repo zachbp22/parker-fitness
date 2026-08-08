@@ -11,15 +11,17 @@ import {
 } from 'react-native';
 
 import {
+  getProfile,
   getTodayDate,
   loadActiveProfile,
   loadFoods,
+  loadProfiles as loadStoredProfiles,
   loadWorkouts,
-  PROFILES,
   saveActiveProfile,
+  type Profile,
   type ProfileId,
   type StoredFood,
-  type StoredWorkout,
+  type StoredWorkout
 } from '@/services/storage';
 
 type HistoryTab = 'nutrition' | 'workouts';
@@ -43,6 +45,8 @@ const MEALS = [
 export default function HistoryScreen() {
   const [activeProfile, setActiveProfile] =
     useState<ProfileId>('zach');
+    const [profiles, setProfiles] =
+  useState<Profile[]>([]);
 
   const [activeTab, setActiveTab] =
     useState<HistoryTab>('nutrition');
@@ -67,8 +71,13 @@ export default function HistoryScreen() {
   const [refreshing, setRefreshing] =
     useState(false);
 
-  const profile =
-    PROFILES[activeProfile];
+const [profile, setProfile] =
+  useState<Profile>({
+    id: 'loading',
+    name: 'User',
+    calorieGoal: 0,
+    proteinGoal: 0,
+  });
 
   const loadHistory = useCallback(
     async (showLoading = true) => {
@@ -76,20 +85,31 @@ export default function HistoryScreen() {
         if (showLoading) {
           setLoading(true);
         }
+const [
+  savedProfile,
+  savedFoods,
+  savedWorkouts,
+  savedProfiles,
+] = await Promise.all([
+  loadActiveProfile(),
+  loadFoods<StoredFood>(),
+  loadWorkouts(),
+  loadStoredProfiles(),
+]);
 
-        const [
-          savedProfile,
-          savedFoods,
-          savedWorkouts,
-        ] = await Promise.all([
-          loadActiveProfile(),
-          loadFoods<StoredFood>(),
-          loadWorkouts(),
-        ]);
+setActiveProfile(savedProfile);
+setFoods(savedFoods ?? []);
+setWorkouts(savedWorkouts);
+setProfiles(savedProfiles);
 
-        setActiveProfile(savedProfile);
-        setFoods(savedFoods ?? []);
-        setWorkouts(savedWorkouts);
+const selectedProfile =
+  savedProfiles.find(
+    (item) => item.id === savedProfile
+  );
+
+if (selectedProfile) {
+  setProfile(selectedProfile);
+}
       } catch (error) {
         console.error(
           'Error loading history:',
@@ -110,23 +130,29 @@ export default function HistoryScreen() {
   );
 
   async function changeProfile(
-    profileId: ProfileId
-  ) {
-    setActiveProfile(profileId);
+  profileId: ProfileId
+) {
+  setActiveProfile(profileId);
 
-    setExpandedDate(null);
-    setExpandedWorkoutId(null);
+  setExpandedDate(null);
+  setExpandedWorkoutId(null);
 
-    try {
-      await saveActiveProfile(profileId);
-    } catch (error) {
-      console.error(
-        'Error saving active profile:',
-        error
-      );
+  try {
+    const selectedProfile =
+      await getProfile(profileId);
+
+    if (selectedProfile) {
+      setProfile(selectedProfile);
     }
-  }
 
+    await saveActiveProfile(profileId);
+  } catch (error) {
+    console.error(
+      'Error changing active profile:',
+      error
+    );
+  }
+}
   function refresh() {
     setRefreshing(true);
     loadHistory(false);
@@ -316,25 +342,18 @@ export default function HistoryScreen() {
             styles.profileSwitcher
           }
         >
-          <ProfileButton
-            label="Zach"
-            selected={
-              activeProfile === 'zach'
-            }
-            onPress={() =>
-              changeProfile('zach')
-            }
-          />
-
-          <ProfileButton
-            label="Wife"
-            selected={
-              activeProfile === 'wife'
-            }
-            onPress={() =>
-              changeProfile('wife')
-            }
-          />
+         {profiles.map((item) => (
+  <ProfileButton
+    key={item.id}
+    label={item.name}
+    selected={
+      activeProfile === item.id
+    }
+    onPress={() =>
+      changeProfile(item.id)
+    }
+  />
+))}
         </View>
 
         <Text style={styles.viewingText}>

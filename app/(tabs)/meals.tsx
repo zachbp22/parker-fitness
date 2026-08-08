@@ -20,16 +20,18 @@ import {
 import {
   addDateToExistingFoods,
   addProfileToExistingFoods,
-  FavoriteFood,
+  getProfile,
   getTodayDate,
   loadActiveProfile,
   loadFavoriteFoods,
   loadFoods,
-  ProfileId,
-  PROFILES,
+  loadProfiles as loadStoredProfiles,
   saveActiveProfile,
   saveFavoriteFoods,
   saveFoods,
+  type FavoriteFood,
+  type Profile,
+  type ProfileId
 } from '@/services/storage';
 
 type MealType =
@@ -93,12 +95,36 @@ export default function MealsScreen() {
   const [favoritesLoaded, setFavoritesLoaded] =
     useState(false);
 
-  const [activeProfile, setActiveProfile] =
-    useState<ProfileId>('zach');
+const [activeProfile, setActiveProfile] =
+  useState('zach');
 
-  const [selectedDate, setSelectedDate] = useState(
-    getTodayDate()
-  );
+const [profiles, setProfiles] =
+  useState<Profile[]>([]);
+
+const [currentProfile, setCurrentProfile] =
+  useState({
+    id: 'loading',
+    name: 'User',
+    calorieGoal: 0,
+    proteinGoal: 0,
+  });
+
+useEffect(() => {
+  async function loadCurrentProfile() {
+    const profile =
+      await getProfile(activeProfile);
+
+    if (profile) {
+      setCurrentProfile(profile);
+    }
+  }
+
+  loadCurrentProfile();
+}, [activeProfile]);
+
+const [selectedDate, setSelectedDate] = useState(
+  getTodayDate()
+);
 
   const [modalVisible, setModalVisible] =
     useState(false);
@@ -152,18 +178,23 @@ export default function MealsScreen() {
         await addDateToExistingFoods<FoodItem>();
         await addProfileToExistingFoods<FoodItem>();
 
-        const savedFoods =
-          await loadFoods<FoodItem>();
+   const savedFoods =
+  await loadFoods<FoodItem>();
 
-        const savedProfile =
-          await loadActiveProfile();
+const savedProfile =
+  await loadActiveProfile();
 
-        const savedFavorites =
-          await loadFavoriteFoods();
+const savedProfiles =
+  await loadStoredProfiles();
 
-        if (savedFoods !== null) {
-          setFoods(savedFoods);
-        }
+const savedFavorites =
+  await loadFavoriteFoods();
+
+setProfiles(savedProfiles);
+
+if (savedFoods !== null) {
+  setFoods(savedFoods);
+}
 
         setActiveProfile(savedProfile);
         setFavorites(savedFavorites);
@@ -315,7 +346,7 @@ export default function MealsScreen() {
   const isToday =
     selectedDate === getTodayDate();
 
-  const currentProfile = PROFILES[activeProfile];
+
 
   const profileFavorites = useMemo(
     () =>
@@ -991,58 +1022,40 @@ export default function MealsScreen() {
           Track daily nutrition separately for each profile.
         </Text>
 
-        <View style={styles.profileCard}>
+              <View style={styles.profileCard}>
           <Text style={styles.profileLabel}>
             ACTIVE PROFILE
           </Text>
 
           <View style={styles.profileSelector}>
-            <Pressable
-              style={[
-                styles.profileButton,
-                activeProfile === 'zach' &&
-                  styles.profileButtonActive,
-              ]}
-              onPress={() =>
-                changeProfile('zach')
-              }
-            >
-              <Text
+            {profiles.map((profile) => (
+              <Pressable
+                key={profile.id}
                 style={[
-                  styles.profileButtonText,
-                  activeProfile === 'zach' &&
-                    styles.profileButtonTextActive,
+                  styles.profileButton,
+                  activeProfile === profile.id &&
+                    styles.profileButtonActive,
                 ]}
+                onPress={() =>
+                  changeProfile(profile.id)
+                }
               >
-                Zach
-              </Text>
-            </Pressable>
-
-            <Pressable
-              style={[
-                styles.profileButton,
-                activeProfile === 'wife' &&
-                  styles.profileButtonActive,
-              ]}
-              onPress={() =>
-                changeProfile('wife')
-              }
-            >
-              <Text
-                style={[
-                  styles.profileButtonText,
-                  activeProfile === 'wife' &&
-                    styles.profileButtonTextActive,
-                ]}
-              >
-                Wife
-              </Text>
-            </Pressable>
+                <Text
+                  style={[
+                    styles.profileButtonText,
+                    activeProfile === profile.id &&
+                      styles.profileButtonTextActive,
+                  ]}
+                >
+                  {profile.name}
+                </Text>
+              </Pressable>
+            ))}
           </View>
 
-          <Text style={styles.profileStatus}>
-            Viewing {currentProfile.name}'s nutrition
-          </Text>
+<Text style={styles.profileStatus}>
+  Viewing {currentProfile.name}'s nutrition
+</Text>
         </View>
 
         <View style={styles.dateCard}>

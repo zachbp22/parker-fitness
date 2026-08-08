@@ -11,17 +11,22 @@ import {
 } from '@/data/defaultworkouts';
 import {
   addWorkout,
+  getProfile,
   getTodayDate,
+  getWaterForDate,
   loadActiveProfile,
   loadFoods,
   loadLastExercisePerformance,
+  loadProfiles as loadStoredProfiles,
   loadWorkoutsForProfile,
-  ProfileId,
-  PROFILES,
   saveActiveProfile,
-  StoredWorkout
+  setWaterForDate,
+  type Profile,
+  type ProfileId,
+  type StoredWorkout
 } from '@/services/storage';
 import { useFocusEffect } from '@react-navigation/native';
+import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
@@ -37,7 +42,6 @@ import {
   getTodaysWorkout,
   getTomorrowsWorkout,
 } from '@/data/workoutSchedule';
-
 
 type MealType = 'Breakfast' | 'Lunch' | 'Dinner' | 'Snacks';
 
@@ -133,10 +137,67 @@ const [exercises, setExercises] =
 
   const [foods, setFoods] = useState<FoodItem[]>([]);
 
-  const [activeProfile, setActiveProfile] =
-  useState<ProfileId>('zach');
+const [activeProfile, setActiveProfile] =
+  useState('zach');
+const [profiles, setProfiles] =
+  useState<Profile[]>([]);
 
-  const [workoutSeconds, setWorkoutSeconds] = useState(0);
+const [currentProfile, setCurrentProfile] =
+  useState<Profile | null>(null);
+const [waterOunces, setWaterOunces] =
+  useState(0);
+useEffect(() => {
+  async function loadCurrentProfile() {
+    const profile =
+      await getProfile(activeProfile);
+
+    setCurrentProfile(profile);
+  }
+
+  loadCurrentProfile();
+}, [activeProfile]);
+useEffect(() => {
+  async function loadCurrentWater() {
+    const today = getTodayDate();
+
+    const savedWater =
+      await getWaterForDate(
+        activeProfile,
+        today
+      );
+
+    setWaterOunces(savedWater);
+  }
+
+  loadCurrentWater();
+}, [activeProfile]);
+
+async function updateWater(amount: number) {
+  const today = getTodayDate();
+
+  const newAmount = Math.max(
+    0,
+    waterOunces + amount
+  );
+
+  setWaterOunces(newAmount);
+
+  try {
+    await setWaterForDate(
+      activeProfile,
+      today,
+      newAmount
+    );
+  } catch (error) {
+    console.error(
+      'Unable to update water:',
+      error
+    );
+
+    setWaterOunces(waterOunces);
+  }
+}
+const [workoutSeconds, setWorkoutSeconds] = useState(0);
   const [workoutRunning, setWorkoutRunning] = useState(false);
   const [restSeconds, setRestSeconds] = useState(0);
 
@@ -148,9 +209,12 @@ const [exercises, setExercises] =
 
   const loadDashboardFoods = useCallback(async () => {
     try {
-      const savedFoods = await loadFoods<FoodItem>();
-      const savedProfile = await loadActiveProfile();
-      const today = getTodayDate();
+const savedFoods =
+  await loadFoods<FoodItem>();
+const savedProfile = await loadActiveProfile();
+const savedProfiles =
+  await loadStoredProfiles();
+const today = getTodayDate();
 
       const todaysProfileFoods = (savedFoods ?? []).filter(
         (food) =>
@@ -158,8 +222,9 @@ const [exercises, setExercises] =
           food.profileId === savedProfile
       );
 
-      setActiveProfile(savedProfile);
-      setFoods(todaysProfileFoods);
+  setActiveProfile(savedProfile);
+setProfiles(savedProfiles);
+setFoods(todaysProfileFoods);
     } catch (error) {
       console.error(
         'Unable to load dashboard foods:',
@@ -666,6 +731,7 @@ async function changeActiveProfile(
   if (screen === 'workout') {
     return (
       <WorkoutScreen
+      activeProfile={activeProfile}
         exercises={exercises}
         workoutSeconds={workoutSeconds}
         restSeconds={restSeconds}
@@ -693,10 +759,11 @@ async function changeActiveProfile(
 
   if (screen === 'summary') {
     return (
-      <WorkoutSummary
-        profileName={
-          PROFILES[activeProfile].name
-        }
+ <WorkoutSummary
+  activeProfile={activeProfile}
+  profileName={
+    currentProfile?.name ?? 'User'
+  }
         completedSets={completedSets}
         totalSets={totalSets}
         totalVolume={totalVolume}
@@ -708,18 +775,26 @@ async function changeActiveProfile(
   }
 
   return (
-  <HomeDashboard
-    foods={foods}
-    activeProfile={activeProfile}
-    onProfileChange={changeActiveProfile}
-    onStartWorkout={startWorkout}
-  />
+<HomeDashboard
+  foods={foods}
+  waterOunces={waterOunces}
+  profiles={profiles}
+  activeProfile={activeProfile}
+  currentProfile={currentProfile}
+  onProfileChange={changeActiveProfile}
+  onUpdateWater={updateWater}
+  onStartWorkout={startWorkout}
+ />
 );
 }
 
 type HomeDashboardProps = {
   foods: FoodItem[];
+  waterOunces: number;
+  onUpdateWater: (amount: number) => void;
+  profiles: Profile[];
   activeProfile: ProfileId;
+  currentProfile: Profile | null;
   onProfileChange: (
     profileId: ProfileId
   ) => void;
@@ -728,23 +803,26 @@ type HomeDashboardProps = {
 
 function HomeDashboard({
   foods,
+  waterOunces,
+  onUpdateWater,
+  profiles,
   activeProfile,
+  currentProfile,
   onProfileChange,
   onStartWorkout,
 }: HomeDashboardProps) {
-  const currentProfile =
-    PROFILES[activeProfile];
+
    const todaysWorkout =
   getTodaysWorkout(activeProfile);
 
 const tomorrowsWorkout =
   getTomorrowsWorkout(activeProfile);
 
-  const calorieGoal =
-    currentProfile.calorieGoal;
+const calorieGoal =
+  currentProfile?.calorieGoal ?? 0;
 
-  const proteinGoal =
-    currentProfile.proteinGoal;
+const proteinGoal =
+  currentProfile?.proteinGoal ?? 0;
 
   const caloriesUsed = foods.reduce(
     (total, food) =>
@@ -802,64 +880,56 @@ const tomorrowsWorkout =
 
       <Text style={styles.title}>
   {getGreeting()},{' '}
-  {currentProfile.name}
+  {currentProfile?.name ?? 'User'}
 </Text>
 
       <Text style={styles.subtitle}>
         Here is today's progress.
       </Text>
 <View style={styles.profileCard}>
-  <Text style={styles.profileLabel}>
-    ACTIVE PROFILE
-  </Text>
+      <View style={styles.profileCard}>
+        <Text style={styles.profileLabel}>
+          ACTIVE PROFILE
+        </Text>
 
-  <View style={styles.profileSelector}>
+        <View style={styles.profileSelector}>
+          {profiles.map((profile) => (
+            <Pressable
+              key={profile.id}
+              style={[
+                styles.profileButton,
+                activeProfile === profile.id &&
+                  styles.profileButtonActive,
+              ]}
+              onPress={() =>
+                onProfileChange(profile.id)
+              }
+            >
+              <Text
+                style={[
+                  styles.profileButtonText,
+                  activeProfile === profile.id &&
+                    styles.profileButtonTextActive,
+                ]}
+              >
+                {profile.name}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+
+        <Text style={styles.profileViewingText}>
+          Viewing {currentProfile?.name ?? 'User'}'s dashboard
+        </Text>
     <Pressable
-      style={[
-        styles.profileButton,
-        activeProfile === 'zach' &&
-          styles.profileButtonActive,
-      ]}
-      onPress={() =>
-        onProfileChange('zach')
-      }
-    >
-      <Text
-        style={[
-          styles.profileButtonText,
-          activeProfile === 'zach' &&
-            styles.profileButtonTextActive,
-        ]}
-      >
-        Zach
-      </Text>
-    </Pressable>
-
-    <Pressable
-      style={[
-        styles.profileButton,
-        activeProfile === 'wife' &&
-          styles.profileButtonActive,
-      ]}
-      onPress={() =>
-        onProfileChange('wife')
-      }
-    >
-      <Text
-        style={[
-          styles.profileButtonText,
-          activeProfile === 'wife' &&
-            styles.profileButtonTextActive,
-        ]}
-      >
-        Wife
-      </Text>
-    </Pressable>
-  </View>
-
-  <Text style={styles.profileViewingText}>
-    Viewing {currentProfile.name}'s dashboard
+  style={styles.manageProfilesButton}
+  onPress={() => router.push('/profiles')}
+>
+  <Text style={styles.manageProfilesButtonText}>
+    Manage Profiles
   </Text>
+</Pressable>
+      </View>
 </View>
       <View style={styles.mainCard}>
         <Text style={styles.cardLabel}>
@@ -910,11 +980,38 @@ const tomorrowsWorkout =
 
         <StatCard
           title="Water"
-          value="48 oz"
+          value={`${waterOunces} oz`}
           goal={`${WATER_GOAL} oz goal`}
         />
       </View>
+<View style={styles.waterControls}>
+  <Pressable
+    style={styles.waterButton}
+    onPress={() => onUpdateWater(-8)}
+  >
+    <Text style={styles.waterButtonText}>
+      -8 oz
+    </Text>
+  </Pressable>
 
+  <Pressable
+    style={styles.waterButton}
+    onPress={() => onUpdateWater(8)}
+  >
+    <Text style={styles.waterButtonText}>
+      +8 oz
+    </Text>
+  </Pressable>
+
+  <Pressable
+    style={styles.waterButton}
+    onPress={() => onUpdateWater(16)}
+  >
+    <Text style={styles.waterButtonText}>
+      +16 oz
+    </Text>
+  </Pressable>
+</View>
       <Text
         style={styles.sectionTitle}
       >
@@ -963,7 +1060,7 @@ const tomorrowsWorkout =
 {todaysWorkout.isRestDay ? (
   <View style={styles.restDayMessage}>
     <Text style={styles.restDayMessageText}>
-      Recovery day — no workout scheduled
+      Recovery day - no workout scheduled
     </Text>
   </View>
 ) : (
@@ -1120,6 +1217,7 @@ function DashboardMealRow({
 }
 
 type WorkoutScreenProps = {
+  activeProfile: ProfileId;
   exercises: Exercise[];
   workoutSeconds: number;
   restSeconds: number;
@@ -1151,6 +1249,7 @@ type WorkoutScreenProps = {
 
 
  function WorkoutScreen({
+  activeProfile,
   exercises,
   workoutSeconds,
   restSeconds,
@@ -1175,7 +1274,7 @@ type WorkoutScreenProps = {
         );
 
   const todaysWorkout =
-    getTodaysWorkout();
+  getTodaysWorkout(activeProfile);
 
   return (
     <View style={styles.screen}>
@@ -1604,6 +1703,7 @@ function ExerciseCard({
 }
 
 type WorkoutSummaryProps = {
+  activeProfile: ProfileId;
   profileName: string;
   completedSets: number;
   totalSets: number;
@@ -1617,6 +1717,7 @@ type WorkoutSummaryProps = {
 };
 
 function WorkoutSummary({
+  activeProfile,
   profileName,
   completedSets,
   totalSets,
@@ -1625,8 +1726,8 @@ function WorkoutSummary({
   newPRs,
   onDone,
 }: WorkoutSummaryProps) {
-  const todaysWorkout =
-    getTodaysWorkout();
+const todaysWorkout =
+  getTodaysWorkout(activeProfile);
 
   return (
     <ScrollView
@@ -1937,6 +2038,19 @@ profileViewingText: {
   textAlign: 'center',
   marginTop: 12,
 },
+manageProfilesButton: {
+  marginTop: 12,
+  paddingVertical: 10,
+  alignItems: 'center',
+  borderTopWidth: 1,
+  borderTopColor: '#E2E8E4',
+},
+
+manageProfilesButtonText: {
+  color: '#2D6B48',
+  fontSize: 14,
+  fontWeight: '800',
+},
   mainCard: {
     backgroundColor: '#1D4A32',
     borderRadius: 24,
@@ -1983,6 +2097,27 @@ profileViewingText: {
     gap: 12,
     marginBottom: 28,
   },
+  waterControls: {
+  flexDirection: 'row',
+  gap: 8,
+  marginTop: -16,
+  marginBottom: 28,
+},
+
+waterButton: {
+  flex: 1,
+  backgroundColor: '#E4EEE8',
+  borderRadius: 12,
+  paddingVertical: 11,
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+
+waterButtonText: {
+  color: '#2D6B48',
+  fontSize: 13,
+  fontWeight: '800',
+},
   statCard: {
     flex: 1,
     backgroundColor: '#FFFFFF',

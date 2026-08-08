@@ -3,10 +3,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const FOOD_STORAGE_KEY = '@parker_fitness_foods';
 const ACTIVE_PROFILE_KEY = '@parker_fitness_active_profile';
 const WORKOUT_STORAGE_KEY = '@parker_fitness_workouts';
+const PROFILE_STORAGE_KEY =
+  '@parker_fitness_profiles';
 const FAVORITE_FOODS_STORAGE_KEY =
   '@parker_fitness_favorite_foods';
-
-export type ProfileId = 'zach' | 'wife';
+const WATER_STORAGE_KEY =
+  '@parker_fitness_water';
+export type ProfileId = string;
 
 export type StoredFood = {
   id: string;
@@ -42,7 +45,11 @@ export type Profile = {
   calorieGoal: number;
   proteinGoal: number;
 };
-
+export type StoredWater = {
+  profileId: ProfileId;
+  date: string;
+  ounces: number;
+};
 export type StoredWorkoutSet = {
   id: number;
   weight: string;
@@ -71,7 +78,7 @@ export type StoredWorkout = {
   exercises: StoredWorkoutExercise[];
 };
 
-export const PROFILES: Record<ProfileId, Profile> = {
+export const PROFILES: Record<string, Profile> = {
   zach: {
     id: 'zach',
     name: 'Zach',
@@ -86,7 +93,152 @@ export const PROFILES: Record<ProfileId, Profile> = {
     proteinGoal: 120,
   },
 };
+export async function saveProfiles(
+  profiles: Profile[]
+): Promise<void> {
+  try {
+    await AsyncStorage.setItem(
+      PROFILE_STORAGE_KEY,
+      JSON.stringify(profiles)
+    );
+  } catch (error) {
+    console.error(
+      'Error saving profiles:',
+      error
+    );
 
+    throw error;
+  }
+}
+
+export async function loadProfiles(): Promise<Profile[]> {
+  try {
+    const savedProfiles =
+      await AsyncStorage.getItem(
+        PROFILE_STORAGE_KEY
+      );
+
+    if (savedProfiles) {
+      const parsedProfiles =
+        JSON.parse(savedProfiles) as Profile[];
+
+      if (
+        Array.isArray(parsedProfiles) &&
+        parsedProfiles.length > 0
+      ) {
+        return parsedProfiles;
+      }
+    }
+
+    const legacyProfiles =
+      Object.values(PROFILES);
+
+    await saveProfiles(legacyProfiles);
+
+    return legacyProfiles;
+  } catch (error) {
+    console.error(
+      'Error loading profiles:',
+      error
+    );
+
+    return Object.values(PROFILES);
+  }
+}
+
+export async function getProfile(
+  profileId: ProfileId
+): Promise<Profile | null> {
+  const profiles = await loadProfiles();
+
+  return (
+    profiles.find(
+      (profile) => profile.id === profileId
+    ) ?? null
+  );
+}
+export async function addProfile(
+  profile: Profile
+): Promise<void> {
+  const profiles = await loadProfiles();
+
+  const profileExists = profiles.some(
+    (existingProfile) =>
+      existingProfile.id === profile.id
+  );
+
+  if (profileExists) {
+    throw new Error(
+      `Profile with id "${profile.id}" already exists.`
+    );
+  }
+
+  await saveProfiles([
+    ...profiles,
+    profile,
+  ]);
+}
+export async function updateProfile(
+  updatedProfile: Profile
+): Promise<void> {
+  const profiles = await loadProfiles();
+
+  const profileExists = profiles.some(
+    (profile) =>
+      profile.id === updatedProfile.id
+  );
+
+  if (!profileExists) {
+    throw new Error(
+      `Profile with id "${updatedProfile.id}" was not found.`
+    );
+  }
+
+  const updatedProfiles = profiles.map(
+    (profile) =>
+      profile.id === updatedProfile.id
+        ? updatedProfile
+        : profile
+  );
+
+  await saveProfiles(updatedProfiles);
+}
+export async function deleteProfile(
+  profileId: ProfileId
+): Promise<void> {
+  const profiles = await loadProfiles();
+
+  if (profiles.length <= 1) {
+    throw new Error(
+      'At least one profile must remain.'
+    );
+  }
+
+  const profileExists = profiles.some(
+    (profile) => profile.id === profileId
+  );
+
+  if (!profileExists) {
+    throw new Error(
+      `Profile with id "${profileId}" was not found.`
+    );
+  }
+
+  const remainingProfiles = profiles.filter(
+  (profile) => profile.id !== profileId
+);
+
+await saveProfiles(remainingProfiles);
+
+const activeProfile =
+  await loadActiveProfile();
+
+if (activeProfile === profileId) {
+  await saveActiveProfile(
+    remainingProfiles[0].id
+  );
+}
+}
 export function getTodayDate(): string {
   const today = new Date();
 
@@ -102,7 +254,100 @@ export function getTodayDate(): string {
 
   return `${year}-${month}-${day}`;
 }
+/*
+ * ============================================================
+ * WATER STORAGE
+ * ============================================================
+ */
 
+export async function loadWater(): Promise<StoredWater[]> {
+  try {
+    const jsonValue =
+      await AsyncStorage.getItem(WATER_STORAGE_KEY);
+
+    if (!jsonValue) {
+      return [];
+    }
+
+    return JSON.parse(jsonValue) as StoredWater[];
+  } catch (error) {
+    console.error(
+      'Unable to load water:',
+      error
+    );
+
+    return [];
+  }
+}
+
+export async function saveWater(
+  water: StoredWater[]
+): Promise<void> {
+  try {
+    const jsonValue = JSON.stringify(water);
+
+    await AsyncStorage.setItem(
+      WATER_STORAGE_KEY,
+      jsonValue
+    );
+  } catch (error) {
+    console.error(
+      'Unable to save water:',
+      error
+    );
+
+    throw error;
+  }
+}
+
+export async function getWaterForDate(
+  profileId: ProfileId,
+  date: string
+): Promise<number> {
+  const water = await loadWater();
+
+  const record = water.find(
+    (item) =>
+      item.profileId === profileId &&
+      item.date === date
+  );
+
+  return record?.ounces ?? 0;
+}
+
+export async function setWaterForDate(
+  profileId: ProfileId,
+  date: string,
+  ounces: number
+): Promise<void> {
+  const water = await loadWater();
+
+  const safeOunces = Math.max(
+    0,
+    Math.round(ounces)
+  );
+
+  const existingIndex = water.findIndex(
+    (item) =>
+      item.profileId === profileId &&
+      item.date === date
+  );
+
+  if (existingIndex >= 0) {
+    water[existingIndex] = {
+      ...water[existingIndex],
+      ounces: safeOunces,
+    };
+  } else {
+    water.push({
+      profileId,
+      date,
+      ounces: safeOunces,
+    });
+  }
+
+  await saveWater(water);
+}
 /*
  * ============================================================
  * FOOD STORAGE
@@ -556,8 +801,8 @@ export async function loadActiveProfile(): Promise<ProfileId> {
       );
 
     if (
-      savedProfile === 'zach' ||
-      savedProfile === 'wife'
+      savedProfile &&
+      savedProfile.trim().length > 0
     ) {
       return savedProfile;
     }
@@ -572,7 +817,6 @@ export async function loadActiveProfile(): Promise<ProfileId> {
     return 'zach';
   }
 }
-
 /*
  * ============================================================
  * WORKOUT STORAGE
