@@ -9,6 +9,8 @@ const FAVORITE_FOODS_STORAGE_KEY =
   '@parker_fitness_favorite_foods';
 const WATER_STORAGE_KEY =
   '@parker_fitness_water';
+  const WEIGHT_STORAGE_KEY =
+  '@parker_fitness_weight';
 export type ProfileId = string;
 
 export type StoredFood = {
@@ -49,6 +51,11 @@ export type StoredWater = {
   profileId: ProfileId;
   date: string;
   ounces: number;
+};
+export type StoredWeight = {
+  profileId: ProfileId;
+  date: string;
+  weight: number;
 };
 export type StoredWorkoutSet = {
   id: number;
@@ -347,6 +354,117 @@ export async function setWaterForDate(
   }
 
   await saveWater(water);
+}
+/*
+ * ============================================================
+ * WEIGHT STORAGE
+ * ============================================================
+ */
+
+export async function loadWeights(): Promise<StoredWeight[]> {
+  try {
+    const jsonValue =
+      await AsyncStorage.getItem(
+        WEIGHT_STORAGE_KEY
+      );
+
+    if (!jsonValue) {
+      return [];
+    }
+
+    return JSON.parse(
+      jsonValue
+    ) as StoredWeight[];
+  } catch (error) {
+    console.error(
+      'Unable to load weights:',
+      error
+    );
+
+    return [];
+  }
+}
+
+export async function saveWeights(
+  weights: StoredWeight[]
+): Promise<void> {
+  try {
+    const jsonValue =
+      JSON.stringify(weights);
+
+    await AsyncStorage.setItem(
+      WEIGHT_STORAGE_KEY,
+      jsonValue
+    );
+  } catch (error) {
+    console.error(
+      'Unable to save weights:',
+      error
+    );
+
+    throw error;
+  }
+}
+export async function setWeightForDate(
+  profileId: ProfileId,
+  date: string,
+  weight: number
+): Promise<void> {
+  const weights = await loadWeights();
+
+  const existingIndex = weights.findIndex(
+    (entry) =>
+      entry.profileId === profileId &&
+      entry.date === date
+  );
+
+  if (existingIndex >= 0) {
+    weights[existingIndex] = {
+      profileId,
+      date,
+      weight,
+    };
+  } else {
+    weights.push({
+      profileId,
+      date,
+      weight,
+    });
+  }
+
+  await saveWeights(weights);
+}
+
+export async function getWeightForDate(
+  profileId: ProfileId,
+  date: string
+): Promise<number | null> {
+  const weights = await loadWeights();
+
+  const entry = weights.find(
+    (item) =>
+      item.profileId === profileId &&
+      item.date === date
+  );
+
+  return entry?.weight ?? null;
+}
+export async function getLatestWeight(
+  profileId: ProfileId
+): Promise<StoredWeight | null> {
+  const weights = await loadWeights();
+
+  const profileWeights = weights
+    .filter(
+      (entry) =>
+        entry.profileId === profileId
+    )
+    .sort(
+      (a, b) =>
+        b.date.localeCompare(a.date)
+    );
+
+  return profileWeights[0] ?? null;
 }
 /*
  * ============================================================

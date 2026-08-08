@@ -11,6 +11,7 @@ import {
 } from '@/data/defaultworkouts';
 import {
   addWorkout,
+  getLatestWeight,
   getProfile,
   getTodayDate,
   getWaterForDate,
@@ -21,6 +22,7 @@ import {
   loadWorkoutsForProfile,
   saveActiveProfile,
   setWaterForDate,
+  setWeightForDate,
   type Profile,
   type ProfileId,
   type StoredWorkout
@@ -146,6 +148,13 @@ const [currentProfile, setCurrentProfile] =
   useState<Profile | null>(null);
 const [waterOunces, setWaterOunces] =
   useState(0);
+  const [currentWeight, setCurrentWeight] =
+  useState<number | null>(null);
+  const [showWeightForm, setShowWeightForm] =
+  useState(false);
+
+const [weightInput, setWeightInput] =
+  useState('');
 useEffect(() => {
   async function loadCurrentProfile() {
     const profile =
@@ -171,7 +180,18 @@ useEffect(() => {
 
   loadCurrentWater();
 }, [activeProfile]);
+useEffect(() => {
+  async function loadCurrentWeight() {
+    const latestWeight =
+      await getLatestWeight(activeProfile);
 
+    setCurrentWeight(
+      latestWeight?.weight ?? null
+    );
+  }
+
+  loadCurrentWeight();
+}, [activeProfile]);
 async function updateWater(amount: number) {
   const today = getTodayDate();
 
@@ -195,6 +215,44 @@ async function updateWater(amount: number) {
     );
 
     setWaterOunces(waterOunces);
+  }
+}
+async function saveCurrentWeight() {
+  const parsedWeight = Number(weightInput);
+
+  if (
+    !Number.isFinite(parsedWeight) ||
+    parsedWeight <= 0
+  ) {
+    Alert.alert(
+      'Invalid Weight',
+      'Please enter a valid weight.'
+    );
+    return;
+  }
+
+  try {
+    const today = getTodayDate();
+
+    await setWeightForDate(
+      activeProfile,
+      today,
+      parsedWeight
+    );
+
+    setCurrentWeight(parsedWeight);
+    setWeightInput('');
+    setShowWeightForm(false);
+  } catch (error) {
+    console.error(
+      'Unable to save weight:',
+      error
+    );
+
+    Alert.alert(
+      'Unable to Save',
+      'Your weight could not be saved.'
+    );
   }
 }
 const [workoutSeconds, setWorkoutSeconds] = useState(0);
@@ -778,19 +836,31 @@ async function changeActiveProfile(
 <HomeDashboard
   foods={foods}
   waterOunces={waterOunces}
+  currentWeight={currentWeight}
+  showWeightForm={showWeightForm}
+weightInput={weightInput}
+onWeightInputChange={setWeightInput}
+onShowWeightFormChange={setShowWeightForm}
+onSaveWeight={saveCurrentWeight}
   profiles={profiles}
   activeProfile={activeProfile}
   currentProfile={currentProfile}
   onProfileChange={changeActiveProfile}
   onUpdateWater={updateWater}
   onStartWorkout={startWorkout}
- />
+/>
 );
 }
 
 type HomeDashboardProps = {
   foods: FoodItem[];
   waterOunces: number;
+  currentWeight: number | null;
+  showWeightForm: boolean;
+  weightInput: string;
+  onWeightInputChange: (value: string) => void;
+  onShowWeightFormChange: (show: boolean) => void;
+  onSaveWeight: () => void;
   onUpdateWater: (amount: number) => void;
   profiles: Profile[];
   activeProfile: ProfileId;
@@ -804,7 +874,13 @@ type HomeDashboardProps = {
 function HomeDashboard({
   foods,
   waterOunces,
+  currentWeight,
+  showWeightForm,
+  weightInput,
+  onWeightInputChange,
+  onShowWeightFormChange,
   onUpdateWater,
+  onSaveWeight,
   profiles,
   activeProfile,
   currentProfile,
@@ -1012,6 +1088,90 @@ const proteinGoal =
     </Text>
   </Pressable>
 </View>
+<Text style={styles.sectionTitle}>
+  Weight progress
+</Text>
+
+<View style={styles.weightCard}>
+  {!showWeightForm ? (
+    <>
+      <View>
+        <Text style={styles.weightLabel}>
+          CURRENT WEIGHT
+        </Text>
+
+        <Text style={styles.weightValue}>
+          {currentWeight !== null
+            ? `${currentWeight} lbs`
+            : 'Not logged'}
+        </Text>
+      </View>
+
+      <Pressable
+        style={styles.logWeightButton}
+        onPress={() => {
+          onWeightInputChange(
+            currentWeight !== null
+              ? String(currentWeight)
+              : ''
+          );
+
+          onShowWeightFormChange(true);
+        }}
+      >
+        <Text style={styles.logWeightButtonText}>
+          Log Weight
+        </Text>
+      </Pressable>
+    </>
+  ) : (
+    <View style={styles.weightForm}>
+      <Text style={styles.weightLabel}>
+        ENTER WEIGHT
+      </Text>
+
+      <View style={styles.weightInputRow}>
+        <TextInput
+          style={styles.weightInput}
+          value={weightInput}
+          onChangeText={onWeightInputChange}
+          keyboardType="decimal-pad"
+          placeholder="225"
+          placeholderTextColor="#9AA39E"
+          autoFocus
+        />
+
+        <Text style={styles.weightUnit}>
+          lbs
+        </Text>
+      </View>
+
+      <View style={styles.weightActionRow}>
+        <Pressable
+          style={styles.cancelWeightButton}
+          onPress={() => {
+            onWeightInputChange('');
+            onShowWeightFormChange(false);
+          }}
+        >
+          <Text style={styles.cancelWeightButtonText}>
+            Cancel
+          </Text>
+        </Pressable>
+
+        <Pressable
+          style={styles.saveWeightButton}
+          onPress={onSaveWeight}
+        >
+          <Text style={styles.saveWeightButtonText}>
+            Save Weight
+          </Text>
+        </Pressable>
+      </View>
+    </View>
+  )}
+</View>
+
       <Text
         style={styles.sectionTitle}
       >
@@ -2115,6 +2275,103 @@ waterButton: {
 
 waterButtonText: {
   color: '#2D6B48',
+  fontSize: 13,
+  fontWeight: '800',
+},
+weightCard: {
+  backgroundColor: '#FFFFFF',
+  borderRadius: 18,
+  padding: 18,
+  marginBottom: 28,
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+},
+
+weightLabel: {
+  color: '#68756E',
+  fontSize: 11,
+  fontWeight: '800',
+  letterSpacing: 1,
+},
+
+weightValue: {
+  color: '#17211C',
+  fontSize: 26,
+  fontWeight: '900',
+  marginTop: 4,
+},
+
+logWeightButton: {
+  backgroundColor: '#2D6B48',
+  borderRadius: 12,
+  paddingHorizontal: 16,
+  paddingVertical: 11,
+},
+
+logWeightButtonText: {
+  color: '#FFFFFF',
+  fontSize: 13,
+  fontWeight: '800',
+},
+weightForm: {
+  flex: 1,
+},
+
+weightInputRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  marginTop: 10,
+},
+
+weightInput: {
+  flex: 1,
+  backgroundColor: '#F3F6F4',
+  borderRadius: 12,
+  paddingHorizontal: 14,
+  paddingVertical: 12,
+  color: '#17211C',
+  fontSize: 22,
+  fontWeight: '800',
+},
+
+weightUnit: {
+  color: '#68756E',
+  fontSize: 16,
+  fontWeight: '800',
+  marginLeft: 10,
+},
+
+weightActionRow: {
+  flexDirection: 'row',
+  gap: 10,
+  marginTop: 14,
+},
+
+cancelWeightButton: {
+  flex: 1,
+  backgroundColor: '#E4EEE8',
+  borderRadius: 12,
+  paddingVertical: 12,
+  alignItems: 'center',
+},
+
+cancelWeightButtonText: {
+  color: '#2D6B48',
+  fontSize: 13,
+  fontWeight: '800',
+},
+
+saveWeightButton: {
+  flex: 1,
+  backgroundColor: '#2D6B48',
+  borderRadius: 12,
+  paddingVertical: 12,
+  alignItems: 'center',
+},
+
+saveWeightButtonText: {
+  color: '#FFFFFF',
   fontSize: 13,
   fontWeight: '800',
 },
