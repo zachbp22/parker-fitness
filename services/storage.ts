@@ -3,6 +3,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const FOOD_STORAGE_KEY = '@parker_fitness_foods';
 const ACTIVE_PROFILE_KEY = '@parker_fitness_active_profile';
 const WORKOUT_STORAGE_KEY = '@parker_fitness_workouts';
+const WORKOUT_DRAFT_STORAGE_KEY =
+  '@parker_fitness_workout_draft';
 const PROFILE_STORAGE_KEY =
   '@parker_fitness_profiles';
 const FAVORITE_FOODS_STORAGE_KEY =
@@ -46,6 +48,7 @@ export type Profile = {
   name: string;
   calorieGoal: number;
   proteinGoal: number;
+  weightGoal?: number;
 };
 export type StoredWater = {
   profileId: ProfileId;
@@ -84,21 +87,31 @@ export type StoredWorkout = {
   totalVolume: number;
   exercises: StoredWorkoutExercise[];
 };
-
+export type StoredWorkoutDraft = {
+  profileId: ProfileId;
+  date: string;
+  workoutName: string;
+  workoutType: string;
+  durationSeconds: number;
+  exercises: StoredWorkoutExercise[];
+  savedAt: string;
+};
 export const PROFILES: Record<string, Profile> = {
   zach: {
-    id: 'zach',
-    name: 'Zach',
-    calorieGoal: 2000,
-    proteinGoal: 160,
-  },
+  id: 'zach',
+  name: 'Zach',
+  calorieGoal: 2000,
+  proteinGoal: 160,
+  weightGoal: 200,
+},
 
-  wife: {
-    id: 'wife',
-    name: 'Wife',
-    calorieGoal: 1600,
-    proteinGoal: 120,
-  },
+wife: {
+  id: 'wife',
+  name: 'Jodi',
+  calorieGoal: 1600,
+  proteinGoal: 120,
+  weightGoal: 150,
+},
 };
 export async function saveProfiles(
   profiles: Profile[]
@@ -126,16 +139,40 @@ export async function loadProfiles(): Promise<Profile[]> {
       );
 
     if (savedProfiles) {
-      const parsedProfiles =
-        JSON.parse(savedProfiles) as Profile[];
+  const parsedProfiles =
+    JSON.parse(savedProfiles) as Profile[];
 
-      if (
-        Array.isArray(parsedProfiles) &&
-        parsedProfiles.length > 0
-      ) {
-        return parsedProfiles;
-      }
+  if (
+    Array.isArray(parsedProfiles) &&
+    parsedProfiles.length > 0
+  ) {
+    const migratedProfiles =
+      parsedProfiles.map((profile) =>
+        profile.id === 'wife' &&
+        profile.name === 'Wife'
+          ? {
+              ...profile,
+              name: 'Jodi',
+            }
+          : profile
+      );
+
+    const needsMigration =
+      migratedProfiles.some(
+        (profile, index) =>
+          profile.name !==
+          parsedProfiles[index].name
+      );
+
+    if (needsMigration) {
+      await saveProfiles(
+        migratedProfiles
+      );
     }
+
+    return migratedProfiles;
+  }
+}
 
     const legacyProfiles =
       Object.values(PROFILES);
@@ -231,20 +268,74 @@ export async function deleteProfile(
     );
   }
 
-  const remainingProfiles = profiles.filter(
-  (profile) => profile.id !== profileId
+  // Load all profile-specific data before deleting.
+  const [
+    water,
+    weights,
+    foods,
+    favorites,
+    workouts,
+    workoutDraft,
+  ] = await Promise.all([
+    loadWater(),
+    loadWeights(),
+    loadFoods(),
+    loadFavoriteFoods(),
+    loadWorkouts(),
+    loadWorkoutDraft(profileId),
+  ]);
+
+  // Keep only data belonging to other profiles.
+  const remainingWater = water.filter(
+    (entry) => entry.profileId !== profileId
+  );
+
+  const remainingWeights = weights.filter(
+    (entry) => entry.profileId !== profileId
+  );
+
+const remainingFoods = (
+  (foods ?? []) as StoredFood[]
+).filter(
+  (entry) => entry.profileId !== profileId
 );
 
-await saveProfiles(remainingProfiles);
-
-const activeProfile =
-  await loadActiveProfile();
-
-if (activeProfile === profileId) {
-  await saveActiveProfile(
-    remainingProfiles[0].id
+  const remainingFavorites = favorites.filter(
+    (entry) => entry.profileId !== profileId
   );
+
+  const remainingWorkouts = workouts.filter(
+    (entry) => entry.profileId !== profileId
+  );
+
+  const remainingProfiles = profiles.filter(
+    (profile) => profile.id !== profileId
+  );
+
+  // Save the cleaned data.
+  await Promise.all([
+    saveWater(remainingWater),
+    saveWeights(remainingWeights),
+    saveFoods(remainingFoods),
+    saveFavoriteFoods(remainingFavorites),
+    saveWorkouts(remainingWorkouts),
+  ]);
+
+// Clear only the deleted profile's workout draft.
+if (workoutDraft) {
+  await clearWorkoutDraft(profileId);
 }
+
+  await saveProfiles(remainingProfiles);
+
+  const activeProfile =
+    await loadActiveProfile();
+
+  if (activeProfile === profileId) {
+    await saveActiveProfile(
+      remainingProfiles[0].id
+    );
+  }
 }
 export function getTodayDate(): string {
   const today = new Date();
@@ -433,6 +524,22 @@ export async function setWeightForDate(
   }
 
   await saveWeights(weights);
+}
+export async function deleteWeightForDate(
+  profileId: ProfileId,
+  date: string
+): Promise<void> {
+  const weights = await loadWeights();
+
+  const updatedWeights = weights.filter(
+    (entry) =>
+      !(
+        entry.profileId === profileId &&
+        entry.date === date
+      )
+  );
+
+  await saveWeights(updatedWeights);
 }
 
 export async function getWeightForDate(
@@ -1177,6 +1284,164 @@ export async function loadLastExercisePerformance(
       error
     );
 
+    throw error;
+  }
+}
+export async function saveWorkoutDraft(
+  draft: StoredWorkoutDraft
+): Promise<void> {
+  try {
+    const jsonValue =
+      await AsyncStorage.getItem(
+        WORKOUT_DRAFT_STORAGE_KEY
+      );
+
+    const drafts: Record<
+      string,
+      StoredWorkoutDraft
+    > = jsonValue
+      ? JSON.parse(jsonValue)
+      : {};
+
+    drafts[draft.profileId] = draft;
+
+    await AsyncStorage.setItem(
+      WORKOUT_DRAFT_STORAGE_KEY,
+      JSON.stringify(drafts)
+    );
+  } catch (error) {
+    console.error(
+      'Error saving workout draft:',
+      error
+    );
+    throw error;
+  }
+}
+
+export async function loadWorkoutDraft(
+  profileId?: ProfileId
+): Promise<StoredWorkoutDraft | null> {
+  try {
+    const jsonValue =
+      await AsyncStorage.getItem(
+        WORKOUT_DRAFT_STORAGE_KEY
+      );
+
+    if (jsonValue === null) {
+      return null;
+    }
+
+    const parsed = JSON.parse(jsonValue);
+
+    // Support the old single-draft format during migration.
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      'profileId' in parsed &&
+      'exercises' in parsed
+    ) {
+      const legacyDraft =
+        parsed as StoredWorkoutDraft;
+
+      if (
+        profileId &&
+        legacyDraft.profileId !== profileId
+      ) {
+        return null;
+      }
+
+      await AsyncStorage.setItem(
+        WORKOUT_DRAFT_STORAGE_KEY,
+        JSON.stringify({
+          [legacyDraft.profileId]:
+            legacyDraft,
+        })
+      );
+
+      return legacyDraft;
+    }
+
+    const drafts = parsed as Record<
+      string,
+      StoredWorkoutDraft
+    >;
+
+    if (profileId) {
+      return drafts[profileId] ?? null;
+    }
+
+    return (
+      Object.values(drafts)[0] ?? null
+    );
+  } catch (error) {
+    console.error(
+      'Error loading workout draft:',
+      error
+    );
+    throw error;
+  }
+}
+
+export async function clearWorkoutDraft(
+  profileId?: ProfileId
+): Promise<void> {
+  try {
+    if (!profileId) {
+      await AsyncStorage.removeItem(
+        WORKOUT_DRAFT_STORAGE_KEY
+      );
+      return;
+    }
+
+    const jsonValue =
+      await AsyncStorage.getItem(
+        WORKOUT_DRAFT_STORAGE_KEY
+      );
+
+    if (jsonValue === null) {
+      return;
+    }
+
+    const parsed = JSON.parse(jsonValue);
+
+    // Handle an old single-draft record.
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      'profileId' in parsed &&
+      'exercises' in parsed
+    ) {
+      if (parsed.profileId === profileId) {
+        await AsyncStorage.removeItem(
+          WORKOUT_DRAFT_STORAGE_KEY
+        );
+      }
+
+      return;
+    }
+
+    const drafts = parsed as Record<
+      string,
+      StoredWorkoutDraft
+    >;
+
+    delete drafts[profileId];
+
+    if (Object.keys(drafts).length === 0) {
+      await AsyncStorage.removeItem(
+        WORKOUT_DRAFT_STORAGE_KEY
+      );
+    } else {
+      await AsyncStorage.setItem(
+        WORKOUT_DRAFT_STORAGE_KEY,
+        JSON.stringify(drafts)
+      );
+    }
+  } catch (error) {
+    console.error(
+      'Error clearing workout draft:',
+      error
+    );
     throw error;
   }
 }

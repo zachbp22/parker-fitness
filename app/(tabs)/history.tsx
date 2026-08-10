@@ -1,30 +1,40 @@
-import { useFocusEffect } from '@react-navigation/native';
-import { useCallback, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-
-import {
+  deleteWeightForDate,
   getProfile,
   getTodayDate,
   loadActiveProfile,
   loadFoods,
   loadProfiles as loadStoredProfiles,
+  loadWeights,
   loadWorkouts,
   saveActiveProfile,
+  setWeightForDate,
   type Profile,
   type ProfileId,
   type StoredFood,
+  type StoredWeight,
   type StoredWorkout
 } from '@/services/storage';
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View
+} from 'react-native';
+import { LineChart } from 'react-native-chart-kit';
 
-type HistoryTab = 'nutrition' | 'workouts';
+type HistoryTab =
+  | 'nutrition'
+  | 'workouts'
+  | 'weight';
 
 type NutritionDay = {
   date: string;
@@ -56,7 +66,56 @@ export default function HistoryScreen() {
 
   const [workouts, setWorkouts] =
     useState<StoredWorkout[]>([]);
+const [weights, setWeights] =
+  useState<StoredWeight[]>([]);
 
+const [editingWeight, setEditingWeight] =
+  useState<StoredWeight | null>(null);
+
+const [editWeightValue, setEditWeightValue] =
+  useState('');
+async function handleSaveWeightEdit() {
+  if (!editingWeight) {
+    return;
+  }
+
+  const parsedWeight = Number(editWeightValue);
+
+  if (
+    !Number.isFinite(parsedWeight) ||
+    parsedWeight <= 0
+  ) {
+    Alert.alert(
+      'Invalid Weight',
+      'Please enter a valid weight.'
+    );
+    return;
+  }
+
+  try {
+    await setWeightForDate(
+      editingWeight.profileId,
+      editingWeight.date,
+      parsedWeight
+    );
+
+    const updatedWeights = await loadWeights();
+
+    setWeights(updatedWeights);
+    setEditingWeight(null);
+    setEditWeightValue('');
+  } catch (error) {
+    console.error(
+      'Unable to update weight:',
+      error
+    );
+
+    Alert.alert(
+      'Unable to Update',
+      'The weight could not be updated.'
+    );
+  }
+}
   const [expandedDate, setExpandedDate] =
     useState<string | null>(null);
 
@@ -64,7 +123,10 @@ export default function HistoryScreen() {
     expandedWorkoutId,
     setExpandedWorkoutId,
   ] = useState<string | null>(null);
-
+const [
+  expandedExerciseName,
+  setExpandedExerciseName,
+] = useState<string | null>(null);
   const [loading, setLoading] =
     useState(true);
 
@@ -90,16 +152,19 @@ const [
   savedFoods,
   savedWorkouts,
   savedProfiles,
+  savedWeights,
 ] = await Promise.all([
   loadActiveProfile(),
   loadFoods<StoredFood>(),
   loadWorkouts(),
   loadStoredProfiles(),
+  loadWeights(),
 ]);
 
 setActiveProfile(savedProfile);
 setFoods(savedFoods ?? []);
 setWorkouts(savedWorkouts);
+setWeights(savedWeights);
 setProfiles(savedProfiles);
 
 const selectedProfile =
@@ -123,6 +188,57 @@ if (selectedProfile) {
     []
   );
 
+  
+function handleDeleteWeight(entry: StoredWeight) {
+  Alert.alert(
+    'Delete weight?',
+    `Delete the ${entry.weight} lb entry from ${formatDate(
+      entry.date
+    )}?`,
+    [
+      {
+        text: 'Cancel',
+        style: 'cancel',
+      },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteWeightForDate(
+              entry.profileId,
+              entry.date
+            );
+
+            const updatedWeights =
+              await loadWeights();
+
+            setWeights(updatedWeights);
+
+            if (
+              editingWeight?.profileId ===
+                entry.profileId &&
+              editingWeight?.date === entry.date
+            ) {
+              setEditingWeight(null);
+              setEditWeightValue('');
+            }
+          } catch (error) {
+            console.error(
+              'Unable to delete weight:',
+              error
+            );
+
+            Alert.alert(
+              'Unable to Delete',
+              'The weight could not be deleted.'
+            );
+          }
+        },
+      },
+    ]
+  );
+}
   useFocusEffect(
     useCallback(() => {
       loadHistory();
@@ -183,7 +299,188 @@ if (selectedProfile) {
           ).getTime()
       );
   }, [workouts, activeProfile]);
+  const exerciseProgress = useMemo(() => {
+  const exerciseMap = new Map<
+    string,
+    {
+      name: string;
+      sessions: {
+        date: string;
+        weight: number;
+        reps: number;
+      }[];
+    }
+  >();
 
+  const chronologicalWorkouts = [
+    ...profileWorkouts,
+  ].reverse();
+
+  for (const workout of chronologicalWorkouts) {
+    for (const exercise of workout.exercises) {
+      const completedSets = exercise.sets.filter(
+        (set) => set.completed
+      );
+
+      if (completedSets.length === 0) {
+        continue;
+      }
+
+      const validSets = completedSets
+        .map((set) => ({
+          weight: Number(set.weight),
+          reps: Number(set.reps),
+        }))
+        .filter(
+          (set) =>
+            Number.isFinite(set.weight) &&
+            Number.isFinite(set.reps)
+        );
+
+      if (validSets.length === 0) {
+        continue;
+      }
+
+      const bestSet = validSets.reduce(
+        (best, current) =>
+          current.weight > best.weight
+            ? current
+            : best
+      );
+
+      const existing =
+        exerciseMap.get(exercise.name);
+
+      const session = {
+        date: workout.date,
+        weight: bestSet.weight,
+        reps: bestSet.reps,
+      };
+
+      if (existing) {
+        existing.sessions.push(session);
+      } else {
+        exerciseMap.set(exercise.name, {
+          name: exercise.name,
+          sessions: [session],
+        });
+      }
+    }
+  }
+
+  return Array.from(exerciseMap.values()).map(
+    (exercise) => {
+      const latest =
+        exercise.sessions[
+          exercise.sessions.length - 1
+        ];
+
+      const previous =
+        exercise.sessions.length > 1
+          ? exercise.sessions[
+              exercise.sessions.length - 2
+            ]
+          : null;
+
+      const bestWeight = Math.max(
+        ...exercise.sessions.map(
+          (session) => session.weight
+        )
+      );
+
+      return {
+        ...exercise,
+        latestWeight: latest.weight,
+        latestReps: latest.reps,
+        previousWeight:
+          previous?.weight ?? null,
+        bestWeight,
+        weightChange:
+          previous !== null
+            ? latest.weight - previous.weight
+            : null,
+      };
+    }
+  );
+}, [profileWorkouts]);
+const profileWeights = useMemo(() => {
+  return weights
+    .filter(
+      (weight) =>
+        weight.profileId === activeProfile
+    )
+    .sort(
+      (a, b) =>
+        b.date.localeCompare(a.date)
+    );
+}, [weights, activeProfile]);
+const weightChartData = [...profileWeights]
+  .reverse()
+  .map((entry) => ({
+    date: entry.date,
+    weight: entry.weight,
+  }));
+const currentWeight =
+  profileWeights.length > 0
+    ? profileWeights[0].weight
+    : null;
+
+const startingWeight =
+  profileWeights.length > 0
+    ? profileWeights[
+        profileWeights.length - 1
+      ].weight
+    : null;
+
+const weightChange =
+  currentWeight !== null &&
+  startingWeight !== null
+    ? currentWeight - startingWeight
+    : null;
+    const goalWeight =
+  profile.weightGoal ?? null;
+
+const weightRemaining =
+  currentWeight !== null &&
+  startingWeight !== null &&
+  goalWeight !== null
+    ? goalWeight < startingWeight
+      ? Math.max(0, currentWeight - goalWeight)
+      : goalWeight > startingWeight
+        ? Math.max(0, goalWeight - currentWeight)
+        : 0
+    : null;
+    const weightProgress =
+  currentWeight !== null &&
+  startingWeight !== null &&
+  goalWeight !== null &&
+  startingWeight !== goalWeight
+    ? Math.min(
+        100,
+        Math.max(
+          0,
+          ((startingWeight - currentWeight) /
+            (startingWeight - goalWeight)) *
+            100
+        )
+      )
+    : 0;
+    const poundsChanged =
+  currentWeight !== null &&
+  startingWeight !== null
+    ? Math.abs(
+        currentWeight - startingWeight
+      )
+    : null;
+    const weightChangeLabel =
+  startingWeight !== null &&
+  goalWeight !== null
+    ? goalWeight < startingWeight
+      ? 'LOST'
+      : goalWeight > startingWeight
+        ? 'GAINED'
+        : 'CHANGED'
+    : 'CHANGED';
   const nutritionDays =
     useMemo<NutritionDay[]>(() => {
       const grouped =
@@ -382,6 +679,15 @@ if (selectedProfile) {
             setActiveTab('workouts')
           }
         />
+        <TabButton
+  label="Weight"
+  selected={
+    activeTab === 'weight'
+  }
+  onPress={() =>
+    setActiveTab('weight')
+  }
+/>
       </View>
 
       {activeTab ===
@@ -755,8 +1061,8 @@ if (selectedProfile) {
             )
           )}
         </>
-      ) : (
-        <>
+      ) : activeTab === 'workouts' ? (
+  <>
           <View
             style={styles.heroCard}
           >
@@ -797,7 +1103,162 @@ if (selectedProfile) {
               />
             </View>
           </View>
+          <Text style={styles.historyTitle}>
+            Exercise Progress
+          </Text>
 
+          {exerciseProgress.length === 0 ? (
+  <EmptyCard
+    title="No exercise progress yet"
+    message="Complete workouts to build your exercise progress history."
+  />
+) : (
+  exerciseProgress.map((exercise) => (
+    <View
+      key={exercise.name}
+      style={styles.exerciseProgressCard}
+    >
+      <View style={styles.exerciseProgressHeader}>
+        <View style={styles.exerciseProgressTitleArea}>
+          <Text style={styles.exerciseProgressName}>
+            {exercise.name}
+          </Text>
+
+          <Text style={styles.exerciseProgressSessions}>
+            {exercise.sessions.length}{' '}
+            {exercise.sessions.length === 1
+              ? 'session'
+              : 'sessions'}
+          </Text>
+        </View>
+
+        <View style={styles.exerciseProgressPR}>
+          <Text style={styles.exerciseProgressPRLabel}>
+            BEST
+          </Text>
+
+          <Text style={styles.exerciseProgressPRValue}>
+            {exercise.bestWeight} lb
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.exerciseProgressStats}>
+        <View style={styles.exerciseProgressStat}>
+          <Text style={styles.exerciseProgressValue}>
+            {exercise.latestWeight}
+          </Text>
+          <Text style={styles.exerciseProgressLabel}>
+            Latest lb
+          </Text>
+        </View>
+
+        <View style={styles.exerciseProgressStat}>
+          <Text style={styles.exerciseProgressValue}>
+            {exercise.latestReps}
+          </Text>
+          <Text style={styles.exerciseProgressLabel}>
+            Latest reps
+          </Text>
+        </View>
+
+        <View style={styles.exerciseProgressStat}>
+          <Text style={styles.exerciseProgressValue}>
+            {exercise.bestWeight}
+          </Text>
+          <Text style={styles.exerciseProgressLabel}>
+            Best lb
+          </Text>
+        </View>
+      </View>
+
+        {exercise.weightChange !== null && (
+        <View style={styles.exerciseProgressChange}>
+          <Text style={styles.exerciseProgressChangeText}>
+            {exercise.weightChange > 0
+              ? `Up ${exercise.weightChange} lb from last session`
+              : exercise.weightChange < 0
+                ? `Down ${Math.abs(
+                    exercise.weightChange
+                  )} lb from last session`
+                : 'Same weight as last session'}
+          </Text>
+        </View>
+      )}
+      <Pressable
+        style={styles.exerciseProgressToggle}
+        onPress={() =>
+          setExpandedExerciseName(
+            expandedExerciseName === exercise.name
+              ? null
+              : exercise.name
+          )
+        }
+      >
+        <Text style={styles.exerciseProgressToggleText}>
+          {expandedExerciseName === exercise.name
+            ? 'Hide Progress'
+            : 'Show Progress'}
+        </Text>
+      </Pressable>
+      {expandedExerciseName === exercise.name &&
+  exercise.sessions.length >= 2 && (
+    <View style={styles.exerciseTrendChartCard}>
+      <Text style={styles.exerciseTrendTitle}>
+        Weight Trend
+      </Text>
+
+      <LineChart
+        data={{
+          labels: exercise.sessions.map((session) =>
+            new Date(
+              `${session.date}T00:00:00`
+            ).toLocaleDateString('en-US', {
+              month: 'numeric',
+              day: 'numeric',
+            })
+          ),
+          datasets: [
+            {
+              data: exercise.sessions.map(
+                (session) => session.weight
+              ),
+            },
+          ],
+        }}
+        width={
+          Dimensions.get('window').width - 76
+        }
+        height={190}
+        yAxisSuffix=" lb"
+        chartConfig={{
+          backgroundGradientFrom: '#FFFFFF',
+          backgroundGradientTo: '#FFFFFF',
+          decimalPlaces: 1,
+          color: (opacity = 1) =>
+            `rgba(45, 107, 72, ${opacity})`,
+          labelColor: (opacity = 1) =>
+            `rgba(116, 128, 120, ${opacity})`,
+          propsForDots: {
+            r: '5',
+          },
+        }}
+        bezier
+        style={styles.exerciseTrendChart}
+      />
+    </View>
+  )}
+  {expandedExerciseName === exercise.name &&
+  exercise.sessions.length < 2 && (
+    <Text style={styles.exerciseTrendEmpty}>
+      Complete this exercise in another workout to see a trend chart.
+    </Text>
+  )}
+    </View>
+  ))
+)}
+
+    
           <Text
             style={
               styles.historyTitle
@@ -1012,8 +1473,261 @@ if (selectedProfile) {
               }
             )
           )}
-        </>
-      )}
+      </>
+) : (
+  <>
+    <View style={styles.heroCard}>
+      <Text style={styles.heroEyebrow}>
+        {profile.name.toUpperCase()}
+        {' • '}
+        WEIGHT
+      </Text>
+
+      <View style={styles.heroStats}>
+       <HeroStat
+  value={
+    currentWeight !== null
+      ? `${currentWeight} lb`
+      : '--'
+  }
+  label="Current"
+/>
+
+<HeroStat
+  value={
+    goalWeight !== null
+      ? `${goalWeight} lb`
+      : '--'
+  }
+  label="Goal"
+/>
+
+<HeroStat
+  value={`${weightProgress.toFixed(0)}%`}
+  label="Progress"
+/>
+      </View>
+    </View>
+<View style={styles.weightProgressCard}>
+  <View style={styles.weightProgressRow}>
+    <View style={styles.weightProgressStat}>
+      <Text style={styles.weightProgressLabel}>
+        STARTING
+      </Text>
+      <Text style={styles.weightProgressValue}>
+        {startingWeight !== null
+          ? `${startingWeight} lb`
+          : '--'}
+      </Text>
+    </View>
+
+    <View style={styles.weightProgressStat}>
+    <Text style={styles.weightProgressLabel}>
+  {weightChangeLabel}
+</Text>
+      <Text style={styles.weightProgressValue}>
+        {poundsChanged !== null
+          ? `${poundsChanged.toFixed(1)} lb`
+          : '--'}
+      </Text>
+    </View>
+
+    <View style={styles.weightProgressStat}>
+      <Text style={styles.weightProgressLabel}>
+        REMAINING
+      </Text>
+      <Text style={styles.weightProgressValue}>
+        {weightRemaining !== null
+          ? `${weightRemaining.toFixed(1)} lb`
+          : '--'}
+      </Text>
+    </View>
+  </View>
+
+  <View style={styles.weightProgressTrack}>
+    <View
+      style={[
+        styles.weightProgressFill,
+        {
+          width: `${weightProgress}%`,
+        },
+      ]}
+    />
+  </View>
+</View>
+{weightChartData.length >= 2 && (
+  <>
+    <Text style={styles.historyTitle}>
+      Weight Trend
+    </Text>
+
+    <View style={styles.weightChartCard}>
+      <LineChart
+        data={{
+          labels: weightChartData.map((entry) =>
+            new Date(
+              `${entry.date}T00:00:00`
+            ).toLocaleDateString('en-US', {
+              month: 'numeric',
+              day: 'numeric',
+            })
+          ),
+          datasets: [
+            {
+              data: weightChartData.map(
+                (entry) => entry.weight
+              ),
+            },
+          ],
+        }}
+        width={
+          Dimensions.get('window').width - 76
+        }
+        height={220}
+        yAxisSuffix=" lb"
+        chartConfig={{
+          backgroundGradientFrom: '#FFFFFF',
+          backgroundGradientTo: '#FFFFFF',
+          decimalPlaces: 1,
+          color: (opacity = 1) =>
+            `rgba(45, 107, 72, ${opacity})`,
+          labelColor: (opacity = 1) =>
+            `rgba(116, 128, 120, ${opacity})`,
+          propsForDots: {
+            r: '5',
+          },
+        }}
+        bezier
+        style={styles.weightChart}
+      />
+    </View>
+  </>
+)}
+    <Text style={styles.historyTitle}>
+      Weight History
+    </Text>
+
+    {profileWeights.length === 0 ? (
+   
+      <EmptyCard
+        title="No weight history yet"
+        message="Weights you log on Home will appear here automatically."
+      />
+    ) : (
+profileWeights.map((entry, index) => {
+  const previousEntry =
+    profileWeights[index + 1];
+
+  const changeFromPrevious =
+    previousEntry
+      ? entry.weight - previousEntry.weight
+      : null;
+
+ return (
+  <View
+    key={`${entry.profileId}-${entry.date}`}
+    style={styles.workoutCard}
+  >
+    {editingWeight?.profileId === entry.profileId &&
+    editingWeight?.date === entry.date ? (
+      <>
+        <Text style={styles.workoutName}>
+          Edit Weight
+        </Text>
+
+        <Text style={styles.daySubtitle}>
+          {formatDate(entry.date)}
+        </Text>
+
+        <TextInput
+          value={editWeightValue}
+          onChangeText={setEditWeightValue}
+          keyboardType="decimal-pad"
+          placeholder="Weight"
+          style={styles.weightEditInput}
+        />
+
+        <View style={styles.weightActionRow}>
+          <Pressable
+            style={styles.weightSaveButton}
+            onPress={handleSaveWeightEdit}
+          >
+            <Text style={styles.weightSaveButtonText}>
+              Save
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.weightCancelButton}
+            onPress={() => {
+              setEditingWeight(null);
+              setEditWeightValue('');
+            }}
+          >
+            <Text style={styles.weightCancelButtonText}>
+              Cancel
+            </Text>
+          </Pressable>
+        </View>
+      </>
+    ) : (
+      <>
+        <Text style={styles.workoutName}>
+          {entry.weight} lb
+        </Text>
+
+        <Text style={styles.daySubtitle}>
+          {formatDate(entry.date)}
+        </Text>
+
+        <Text style={styles.weightHistoryChange}>
+          {changeFromPrevious === null
+            ? 'Starting weight'
+            : changeFromPrevious < 0
+              ? `Down ${Math.abs(
+                  changeFromPrevious
+                ).toFixed(1)} lb`
+              : changeFromPrevious > 0
+                ? `Up ${changeFromPrevious.toFixed(
+                    1
+                  )} lb`
+                : 'No change'}
+        </Text>
+
+        <View style={styles.weightActionRow}>
+          <Pressable
+            style={styles.weightEditButton}
+            onPress={() => {
+              setEditingWeight(entry);
+              setEditWeightValue(
+                String(entry.weight)
+              );
+            }}
+          >
+            <Text style={styles.weightEditButtonText}>
+              Edit
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.weightDeleteButton}
+            onPress={() =>
+              handleDeleteWeight(entry)
+            }
+          >
+            <Text style={styles.weightDeleteButtonText}>
+              Delete
+            </Text>
+          </Pressable>
+        </View>
+      </>
+    )}
+  </View>
+);
+})
+    )}
+  </>
+)}
     </ScrollView>
   );
 }
@@ -1359,7 +2073,137 @@ const styles =
       flex: 1,
       backgroundColor: '#F4F6F5',
     },
+exerciseProgressCard: {
+  backgroundColor: '#FFFFFF',
+  borderRadius: 20,
+  padding: 18,
+  marginBottom: 12,
+},
 
+exerciseProgressHeader: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'flex-start',
+  marginBottom: 18,
+},
+
+exerciseProgressTitleArea: {
+  flex: 1,
+  paddingRight: 12,
+},
+
+exerciseProgressName: {
+  color: '#18231D',
+  fontSize: 18,
+  fontWeight: '900',
+},
+
+exerciseProgressSessions: {
+  color: '#748078',
+  fontSize: 13,
+  fontWeight: '700',
+  marginTop: 4,
+},
+
+exerciseProgressPR: {
+  alignItems: 'flex-end',
+  backgroundColor: '#EDF5F0',
+  borderRadius: 12,
+  paddingHorizontal: 12,
+  paddingVertical: 8,
+},
+
+exerciseProgressPRLabel: {
+  color: '#607068',
+  fontSize: 9,
+  fontWeight: '900',
+  letterSpacing: 1,
+},
+
+exerciseProgressPRValue: {
+  color: '#24583B',
+  fontSize: 16,
+  fontWeight: '900',
+  marginTop: 2,
+},
+
+exerciseProgressStats: {
+  flexDirection: 'row',
+  backgroundColor: '#F4F6F5',
+  borderRadius: 14,
+  paddingVertical: 14,
+},
+
+exerciseProgressStat: {
+  flex: 1,
+  alignItems: 'center',
+},
+
+exerciseProgressValue: {
+  color: '#18231D',
+  fontSize: 20,
+  fontWeight: '900',
+},
+
+exerciseProgressLabel: {
+  color: '#748078',
+  fontSize: 10,
+  fontWeight: '700',
+  marginTop: 3,
+},
+
+exerciseProgressChange: {
+  marginTop: 12,
+},
+
+exerciseProgressChangeText: {
+  color: '#24583B',
+  fontSize: 12,
+  fontWeight: '800',
+},
+exerciseProgressToggle: {
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginTop: 14,
+  paddingVertical: 10,
+  borderTopWidth: 1,
+  borderTopColor: '#E5EAE7',
+},
+
+exerciseProgressToggleText: {
+  color: '#24583B',
+  fontSize: 12,
+  fontWeight: '900',
+},
+exerciseTrendChartCard: {
+  marginTop: 12,
+  paddingTop: 12,
+  borderTopWidth: 1,
+  borderTopColor: '#E5EAE7',
+  overflow: 'hidden',
+},
+
+exerciseTrendTitle: {
+  color: '#18231D',
+  fontSize: 14,
+  fontWeight: '900',
+  marginBottom: 10,
+},
+
+exerciseTrendChart: {
+  borderRadius: 14,
+},
+
+exerciseTrendEmpty: {
+  color: '#748078',
+  fontSize: 12,
+  fontWeight: '700',
+  lineHeight: 18,
+  marginTop: 12,
+  paddingTop: 12,
+  borderTopWidth: 1,
+  borderTopColor: '#E5EAE7',
+},
     content: {
       paddingHorizontal: 20,
       paddingTop: 60,
@@ -1834,6 +2678,145 @@ const styles =
       fontSize: 15,
       fontWeight: '900',
     },
+weightProgressCard: {
+  backgroundColor: '#FFFFFF',
+  borderRadius: 18,
+  padding: 18,
+  marginBottom: 24,
+},
+
+weightProgressRow: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  marginBottom: 18,
+},
+
+weightProgressStat: {
+  flex: 1,
+  alignItems: 'center',
+},
+
+weightProgressLabel: {
+  color: '#748078',
+  fontSize: 11,
+  fontWeight: '800',
+  letterSpacing: 1,
+  marginBottom: 6,
+},
+
+weightProgressValue: {
+  color: '#18231D',
+  fontSize: 20,
+  fontWeight: '900',
+},
+
+weightProgressTrack: {
+  height: 10,
+  backgroundColor: '#E4ECE7',
+  borderRadius: 999,
+  overflow: 'hidden',
+},
+weightHistoryChange: {
+  color: '#2D6B48',
+  fontSize: 13,
+  fontWeight: '800',
+  marginTop: 8,
+},
+weightEditInput: {
+  backgroundColor: '#F4F6F5',
+  borderWidth: 1,
+  borderColor: '#DCE4DF',
+  borderRadius: 12,
+  paddingHorizontal: 14,
+  paddingVertical: 12,
+  marginTop: 14,
+  fontSize: 16,
+  fontWeight: '700',
+  color: '#18231D',
+},
+
+weightActionRow: {
+  flexDirection: 'row',
+  gap: 10,
+  marginTop: 14,
+},
+
+weightEditButton: {
+  flex: 1,
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: '#E7EFEA',
+  borderRadius: 12,
+  paddingVertical: 11,
+},
+
+weightEditButtonText: {
+  color: '#24583B',
+  fontSize: 13,
+  fontWeight: '900',
+},
+
+weightDeleteButton: {
+  flex: 1,
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: '#FCE9E9',
+  borderRadius: 12,
+  paddingVertical: 11,
+},
+
+weightDeleteButtonText: {
+  color: '#A33A3A',
+  fontSize: 13,
+  fontWeight: '900',
+},
+
+weightSaveButton: {
+  flex: 1,
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: '#24583B',
+  borderRadius: 12,
+  paddingVertical: 11,
+},
+
+weightSaveButtonText: {
+  color: '#FFFFFF',
+  fontSize: 13,
+  fontWeight: '900',
+},
+
+weightCancelButton: {
+  flex: 1,
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: '#EDF1EF',
+  borderRadius: 12,
+  paddingVertical: 11,
+},
+
+weightCancelButtonText: {
+  color: '#607068',
+  fontSize: 13,
+  fontWeight: '900',
+},
+weightChartCard: {
+  backgroundColor: '#FFFFFF',
+  borderRadius: 18,
+  paddingVertical: 16,
+  paddingHorizontal: 4,
+  marginBottom: 28,
+  overflow: 'hidden',
+},
+
+weightChart: {
+  borderRadius: 16,
+},
+weightProgressFill: {
+  height: '100%',
+  backgroundColor: '#2D6B48',
+  borderRadius: 999,
+},
 
     emptyCard: {
       backgroundColor: '#FFFFFF',

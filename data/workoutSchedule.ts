@@ -128,9 +128,11 @@ export function getWorkoutForDate(
   date: Date,
   profileId: ProfileId = 'zach'
 ): ScheduledWorkout {
-  return WORKOUT_SCHEDULES[profileId][
-    date.getDay()
-  ];
+  const schedule =
+    WORKOUT_SCHEDULES[profileId] ??
+    ZACH_WORKOUT_SCHEDULE;
+
+  return schedule[date.getDay()];
 }
 
 export function getTodaysWorkout(
@@ -141,7 +143,6 @@ export function getTodaysWorkout(
     profileId
   );
 }
-
 export function getTomorrowsWorkout(
   profileId: ProfileId = 'zach'
 ): ScheduledWorkout {

@@ -11,6 +11,7 @@ import {
 } from '@/data/defaultworkouts';
 import {
   addWorkout,
+  clearWorkoutDraft,
   getLatestWeight,
   getProfile,
   getTodayDate,
@@ -19,13 +20,16 @@ import {
   loadFoods,
   loadLastExercisePerformance,
   loadProfiles as loadStoredProfiles,
+  loadWorkoutDraft,
   loadWorkoutsForProfile,
   saveActiveProfile,
+  saveWorkoutDraft,
   setWaterForDate,
   setWeightForDate,
   type Profile,
   type ProfileId,
-  type StoredWorkout
+  type StoredWorkout,
+  type StoredWorkoutDraft
 } from '@/services/storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
@@ -129,6 +133,7 @@ function createFreshExercises(
 
 
 export default function HomeScreen() {
+ 
   const [screen, setScreen] =
     useState<'home' | 'workout' | 'summary'>('home');
 
@@ -312,7 +317,55 @@ setFoods(todaysProfileFoods);
 
     return () => clearInterval(interval);
   }, [workoutRunning]);
+useEffect(() => {
+  if (!workoutRunning || screen !== 'workout') {
+    return;
+  }
 
+  const saveDraft = async () => {
+    const todaysWorkout =
+      getTodaysWorkout(activeProfile);
+
+    const draft: StoredWorkoutDraft = {
+      profileId: activeProfile,
+      date: getTodayDate(),
+      workoutName: todaysWorkout.name,
+      workoutType: todaysWorkout.type,
+      durationSeconds: workoutSeconds,
+      exercises: exercises.map((exercise) => ({
+        id: exercise.id,
+        name: exercise.name,
+        muscle: exercise.muscle,
+        sets: exercise.sets.map((workoutSet) => ({
+          id: workoutSet.id,
+          weight: workoutSet.weight,
+          reps: workoutSet.reps,
+          completed: workoutSet.completed,
+        })),
+      })),
+      savedAt: new Date().toISOString(),
+    };
+
+    try {
+      await saveWorkoutDraft(draft);
+    } catch (error) {
+      console.error(
+        'Unable to save workout draft:',
+        error
+      );
+    }
+  };
+
+if (workoutSeconds % 10 === 0) {
+  void saveDraft();
+}
+}, [
+  exercises,
+  workoutSeconds,
+  workoutRunning,
+  screen,
+  activeProfile,
+]);
   useEffect(() => {
     if (restSeconds <= 0) {
       return;
@@ -380,8 +433,69 @@ setFoods(todaysProfileFoods);
       0
     );
   }, [exercises]);
-
+async function clearAllTestDrafts() {
+  await clearWorkoutDraft();
+}
 async function startWorkout() {
+    try {
+const draft =
+  await loadWorkoutDraft(activeProfile);
+    const today = getTodayDate();
+
+    if (
+      draft &&
+      draft.profileId === activeProfile &&
+      draft.date === today
+    ) {
+      Alert.alert(
+        'Resume workout?',
+        'You have an unfinished workout from today.',
+        [
+          {
+            text: 'Discard & Start New',
+            style: 'destructive',
+onPress: async () => {
+await clearWorkoutDraft(
+  activeProfile
+);
+await startFreshWorkout();
+},
+          },
+          {
+            text: 'Resume Workout',
+            onPress: () => {
+              setExercises(draft.exercises);
+              setWorkoutSeconds(
+                draft.durationSeconds
+              );
+              setRestSeconds(0);
+              setWorkoutSaved(false);
+              setIsSavingWorkout(false);
+              setNewPRs([]);
+              setWorkoutRunning(true);
+              setScreen('workout');
+            },
+          },
+        ]
+      );
+
+      return;
+    }
+      if (draft && draft.date !== today) {
+  await clearWorkoutDraft(
+    activeProfile
+  );
+}
+  } catch (error) {
+    console.error(
+      'Unable to load workout draft:',
+      error
+    );
+  }
+
+  await startFreshWorkout();
+}
+async function startFreshWorkout() {
   const freshExercises =
     createFreshExercises(activeProfile);
 
@@ -735,9 +849,13 @@ setNewPRs(detectedPRs);
 
 await addWorkout(workout);
 
-    setWorkoutSaved(true);
+await clearWorkoutDraft(
+  activeProfile
+);
 
-    setScreen('summary');
+setWorkoutSaved(true);
+
+setScreen('summary');
   } catch (error) {
     console.error(
       'Unable to save workout:',
@@ -800,11 +918,54 @@ async function changeActiveProfile(
         onToggleSet={toggleSet}
         onAddSet={addSet}
         onFinishWorkout={finishWorkout}
-        onCancel={() => {
-          setWorkoutRunning(false);
-          setRestSeconds(0);
-          setScreen('home');
-        }}
+       onCancel={async () => {
+const today = getTodayDate();
+const todaysWorkout =
+  getTodaysWorkout(activeProfile);
+
+const draft: StoredWorkoutDraft = {
+  profileId: activeProfile,
+  date: today,
+  workoutName: todaysWorkout.name,
+  workoutType: todaysWorkout.type,
+    durationSeconds: workoutSeconds,
+    exercises: exercises.map(
+      (exercise) => ({
+        id: exercise.id,
+        name: exercise.name,
+        muscle: exercise.muscle,
+        sets: exercise.sets.map(
+          (workoutSet) => ({
+            id: workoutSet.id,
+            weight: workoutSet.weight,
+            reps: workoutSet.reps,
+            completed:
+              workoutSet.completed,
+          })
+        ),
+      })
+    ),
+    savedAt: new Date().toISOString(),
+  };
+
+  try {
+    await saveWorkoutDraft(draft);
+
+    setWorkoutRunning(false);
+    setRestSeconds(0);
+    setScreen('home');
+  } catch (error) {
+    console.error(
+      'Unable to save workout draft on exit:',
+      error
+    );
+
+    Alert.alert(
+      'Unable to Save Workout',
+      'Your unfinished workout could not be saved. Please try again.'
+    );
+  }
+}}
         onStartRest={() =>
           setRestSeconds(90)
         }
@@ -1297,29 +1458,27 @@ const proteinGoal =
         />
       </View>
 
-      <Text
-        style={styles.sectionTitle}
-      >
-        Weekly progress
-      </Text>
+    <Text style={styles.sectionTitle}>
+  Weekly progress
+</Text>
 
-      <View style={styles.whiteCard}>
-        <Text
-          style={
-            styles.cardLabelDark
-          }
-        >
-          CURRENT WEIGHT
-        </Text>
+<View style={styles.whiteCard}>
+  <Text style={styles.cardLabelDark}>
+    CURRENT WEIGHT
+  </Text>
 
-        <Text style={styles.weight}>
-          238.4 lb
-        </Text>
+  <Text style={styles.weight}>
+    {currentWeight !== null
+      ? `${currentWeight} lb`
+      : 'Not logged'}
+  </Text>
 
-        <Text style={styles.change}>
-          Down 2.1 lb this week
-        </Text>
-      </View>
+  <Text style={styles.change}>
+    {currentWeight !== null
+      ? `${currentProfile?.name ?? 'User'}'s latest weight`
+      : 'Log a weight to begin tracking progress'}
+  </Text>
+</View>
     </ScrollView>
   );
 }
@@ -1462,7 +1621,23 @@ type WorkoutScreenProps = {
           </View>
 
           <Pressable
-            onPress={onCancel}
+            onPress={() => {
+ Alert.alert(
+  'Exit workout?',
+  'Your unfinished workout will be saved so you can resume it later.',
+    [
+      {
+        text: 'Keep Working',
+        style: 'cancel',
+      },
+      {
+        text: 'Exit Workout',
+        style: 'destructive',
+        onPress: onCancel,
+      },
+    ]
+  );
+}}
             disabled={
               isSavingWorkout
             }

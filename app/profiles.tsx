@@ -2,23 +2,23 @@ import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Pressable,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    View
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View
 } from 'react-native';
 
 import {
-    addProfile,
-    deleteProfile,
-    loadProfiles,
-    updateProfile,
-    type Profile,
+  addProfile,
+  deleteProfile,
+  loadProfiles,
+  updateProfile,
+  type Profile,
 } from '@/services/storage';
 
 export default function ProfilesScreen() {
@@ -34,6 +34,8 @@ const [editCalorieGoal, setEditCalorieGoal] =
   useState('');
 
 const [editProteinGoal, setEditProteinGoal] =
+  useState('');
+  const [editWeightGoal, setEditWeightGoal] =
   useState('');
   const [loading, setLoading] =
     useState(true);
@@ -96,6 +98,11 @@ function startEditingProfile(profile: Profile) {
   setEditProteinGoal(
     String(profile.proteinGoal)
   );
+  setEditWeightGoal(
+  profile.weightGoal !== undefined
+    ? String(profile.weightGoal)
+    : ''
+);
 }
 async function handleUpdateProfile() {
   if (!editingProfile) {
@@ -109,13 +116,17 @@ async function handleUpdateProfile() {
 
   const parsedProtein =
     Number(editProteinGoal);
+    const parsedWeightGoal =
+  Number(editWeightGoal);
 
   if (
     !trimmedName ||
     !Number.isFinite(parsedCalories) ||
     parsedCalories <= 0 ||
-    !Number.isFinite(parsedProtein) ||
-    parsedProtein <= 0
+   !Number.isFinite(parsedProtein) ||
+parsedProtein <= 0 ||
+!Number.isFinite(parsedWeightGoal) ||
+parsedWeightGoal <= 0
   ) {
     Alert.alert(
       'Invalid Profile',
@@ -125,17 +136,19 @@ async function handleUpdateProfile() {
   }
 
   try {
-    await updateProfile({
-      ...editingProfile,
-      name: trimmedName,
-      calorieGoal: Math.round(parsedCalories),
-      proteinGoal: Math.round(parsedProtein),
-    });
+   await updateProfile({
+  ...editingProfile,
+  name: trimmedName,
+  calorieGoal: Math.round(parsedCalories),
+  proteinGoal: Math.round(parsedProtein),
+  weightGoal: parsedWeightGoal,
+});
 
     setEditingProfile(null);
     setEditName('');
     setEditCalorieGoal('');
     setEditProteinGoal('');
+    setEditWeightGoal('');
 
     await loadProfileList();
   } catch (error) {
@@ -305,29 +318,41 @@ function handleDeleteProfile(profile: Profile) {
       placeholder="Profile name"
     />
 
-    <Text style={styles.inputLabel}>
-      DAILY CALORIE GOAL
-    </Text>
+<Text style={styles.inputLabel}>
+  DAILY CALORIE GOAL
+</Text>
 
-    <TextInput
-      style={styles.input}
-      value={editCalorieGoal}
-      onChangeText={setEditCalorieGoal}
-      placeholder="2000"
-      keyboardType="number-pad"
-    />
+<TextInput
+  style={styles.input}
+  value={editCalorieGoal}
+  onChangeText={setEditCalorieGoal}
+  placeholder="2000"
+  keyboardType="number-pad"
+/>
 
-    <Text style={styles.inputLabel}>
-      DAILY PROTEIN GOAL
-    </Text>
+<Text style={styles.inputLabel}>
+  DAILY PROTEIN GOAL
+</Text>
 
-    <TextInput
-      style={styles.input}
-      value={editProteinGoal}
-      onChangeText={setEditProteinGoal}
-      placeholder="150"
-      keyboardType="number-pad"
-    />
+<TextInput
+  style={styles.input}
+  value={editProteinGoal}
+  onChangeText={setEditProteinGoal}
+  placeholder="150"
+  keyboardType="number-pad"
+/>
+
+<Text style={styles.inputLabel}>
+  GOAL WEIGHT (LB)
+</Text>
+
+<TextInput
+  style={styles.input}
+  value={editWeightGoal}
+  onChangeText={setEditWeightGoal}
+  placeholder="200"
+  keyboardType="decimal-pad"
+/>
 
     <Pressable
       style={styles.saveButton}
@@ -345,6 +370,7 @@ function handleDeleteProfile(profile: Profile) {
         setEditName('');
         setEditCalorieGoal('');
         setEditProteinGoal('');
+        setEditWeightGoal('');
       }}
     >
       <Text style={styles.cancelButtonText}>
