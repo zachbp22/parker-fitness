@@ -1,24 +1,57 @@
-import { supabase } from '@/services/supabase';
+import {
+  getCloudProfiles,
+  supabase,
+} from '@/services/supabase';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-    Pressable,
-    SafeAreaView,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from 'react-native';
 
 export default function HouseholdScreen() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] =
     useState(false);
+async function testCloudProfiles() {
+  try {
+    const profiles =
+      await getCloudProfiles();
 
+    console.log(
+      'CLOUD PROFILES:',
+      profiles
+    );
+
+    Alert.alert(
+      'Cloud Profiles',
+      profiles
+        .map(
+          (profile) =>
+            `${profile.name}\n${profile.id}`
+        )
+        .join('\n\n')
+    );
+  } catch (error) {
+    console.error(
+      'Cloud profile test failed:',
+      error
+    );
+
+    Alert.alert(
+      'Cloud Profile Error',
+      'Unable to load cloud profiles.'
+    );
+  }
+}
   async function sendInvitation() {
     const cleanEmail =
       email.trim().toLowerCase();
@@ -150,7 +183,14 @@ export default function HouseholdScreen() {
             autoCorrect={false}
             editable={!loading}
           />
-
+<Pressable
+  style={styles.secondaryButton}
+  onPress={testCloudProfiles}
+>
+  <Text style={styles.secondaryButtonText}>
+    TEST CLOUD PROFILES
+  </Text>
+</Pressable>
           <Pressable
             style={[
               styles.primaryButton,
@@ -292,6 +332,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
   },
+  secondaryButton: {
+  borderWidth: 1,
+  borderColor: '#4ade80',
+  borderRadius: 12,
+  paddingVertical: 15,
+  alignItems: 'center',
+  marginBottom: 18,
+},
+
+secondaryButtonText: {
+  color: '#4ade80',
+  fontSize: 16,
+  fontWeight: '800',
+},
 
   disabledButton: {
     opacity: 0.6,

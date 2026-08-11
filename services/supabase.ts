@@ -39,3 +39,41 @@ if (Platform.OS !== 'web') {
     }
   );
 }
+export type CloudProfile = {
+  id: string;
+  household_id: string;
+  user_id: string | null;
+  name: string;
+  calorie_goal: number;
+  protein_goal: number;
+  water_goal: number;
+  starting_weight: number | null;
+  goal_weight: number | null;
+};
+
+export async function getCloudProfiles(): Promise<
+  CloudProfile[]
+> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select(
+      `
+        id,
+        household_id,
+        user_id,
+        name,
+        calorie_goal,
+        protein_goal,
+        water_goal,
+        starting_weight,
+        goal_weight
+      `
+    )
+    .order('name');
+
+  if (error) {
+    throw error;
+  }
+
+  return data ?? [];
+}
