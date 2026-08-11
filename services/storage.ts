@@ -1,5 +1,5 @@
+import { supabase } from '@/services/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
 const FOOD_STORAGE_KEY = '@parker_fitness_foods';
 const ACTIVE_PROFILE_KEY = '@parker_fitness_active_profile';
 const WORKOUT_STORAGE_KEY = '@parker_fitness_workouts';
@@ -453,6 +453,47 @@ export async function setWaterForDate(
   }
 
   await saveWater(water);
+}
+export async function syncWaterToCloud(
+  profileId: ProfileId,
+  date: string,
+  ounces: number
+): Promise<void> {
+  const cloudProfileId = getCloudProfileId(profileId);
+
+  if (!cloudProfileId) {
+    throw new Error(
+      `No cloud profile is mapped to "${profileId}".`
+    );
+  }
+
+  const safeOunces = Math.max(
+    0,
+    Math.round(ounces)
+  );
+
+  const { error } = await supabase
+    .from('water_entries')
+    .upsert(
+      {
+        profile_id: cloudProfileId,
+        entry_date: date,
+        ounces: safeOunces,
+        updated_at: new Date().toISOString(),
+      },
+      {
+        onConflict: 'profile_id,entry_date',
+      }
+    );
+
+  if (error) {
+    console.error(
+      'Unable to sync water to cloud:',
+      error
+    );
+
+    throw error;
+  }
 }
 /*
  * ============================================================

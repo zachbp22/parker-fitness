@@ -77,3 +77,42 @@ export async function getCloudProfiles(): Promise<
 
   return data ?? [];
 }
+export async function getCurrentUserCloudProfile():
+  Promise<CloudProfile | null> {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError) {
+    throw userError;
+  }
+
+  if (!user) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select(
+      `
+        id,
+        household_id,
+        user_id,
+        name,
+        calorie_goal,
+        protein_goal,
+        water_goal,
+        starting_weight,
+        goal_weight
+      `
+    )
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}

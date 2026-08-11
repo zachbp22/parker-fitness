@@ -1,5 +1,10 @@
 import {
+  getTodayDate,
+  syncWaterToCloud,
+} from '@/services/storage';
+import {
   getCloudProfiles,
+  getCurrentUserCloudProfile,
   supabase,
 } from '@/services/supabase';
 import { router } from 'expo-router';
@@ -49,6 +54,102 @@ async function testCloudProfiles() {
     Alert.alert(
       'Cloud Profile Error',
       'Unable to load cloud profiles.'
+    );
+  }
+}
+async function testCurrentCloudProfile() {
+  try {
+    const profile =
+      await getCurrentUserCloudProfile();
+
+    if (!profile) {
+      Alert.alert(
+        'Current Cloud Profile',
+        'No cloud profile found for the signed-in user.'
+      );
+      return;
+    }
+
+    console.log(
+      'CURRENT CLOUD PROFILE:',
+      profile
+    );
+
+    Alert.alert(
+      'Current Cloud Profile',
+      `${profile.name}\n${profile.id}`
+    );
+  } catch (error) {
+    console.error(
+      'Current cloud profile test failed:',
+      error
+    );
+
+    Alert.alert(
+      'Cloud Profile Error',
+      'Unable to identify the current cloud profile.'
+    );
+  }
+}
+async function testCurrentUser() {
+  try {
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser();
+
+    if (error) {
+      throw error;
+    }
+
+    console.log(
+      'CURRENT SUPABASE USER:',
+      user?.id
+    );
+
+    Alert.alert(
+      'Current Supabase User',
+      user?.id ?? 'No authenticated user'
+    );
+  } catch (error) {
+    console.error(
+      'Current user test failed:',
+      error
+    );
+  }
+}
+async function testWaterCloud() {
+  try {
+    const today = getTodayDate();
+
+    await syncWaterToCloud(
+      'wife',
+      today,
+      64
+    );
+
+    console.log(
+      'CLOUD WATER TEST SUCCESS:',
+      {
+        profileId: 'wife',
+        date: today,
+        ounces: 64,
+      }
+    );
+
+    Alert.alert(
+      'Water Cloud Test',
+      `Successfully synced 64 oz for Zach on ${today}.`
+    );
+  } catch (error) {
+    console.error(
+      'Cloud water test failed:',
+      error
+    );
+
+    Alert.alert(
+      'Water Cloud Error',
+      'Unable to sync water to Supabase.'
     );
   }
 }
@@ -189,6 +290,30 @@ async function testCloudProfiles() {
 >
   <Text style={styles.secondaryButtonText}>
     TEST CLOUD PROFILES
+  </Text>
+</Pressable>
+<Pressable
+  style={styles.secondaryButton}
+  onPress={testCurrentCloudProfile}
+>
+  <Text style={styles.secondaryButtonText}>
+    TEST CURRENT CLOUD PROFILE
+  </Text>
+</Pressable>
+<Pressable
+  style={styles.secondaryButton}
+  onPress={testCurrentUser}
+>
+  <Text style={styles.secondaryButtonText}>
+    TEST CURRENT USER
+  </Text>
+</Pressable>
+<Pressable
+  style={styles.secondaryButton}
+  onPress={testWaterCloud}
+>
+  <Text style={styles.secondaryButtonText}>
+    TEST WATER CLOUD
   </Text>
 </Pressable>
           <Pressable
