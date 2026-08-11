@@ -27,6 +27,7 @@ import {
   setWaterForDate,
   setWeightForDate,
   syncWaterToCloud,
+  syncWeightToCloud,
   type Profile,
   type ProfileId,
   type StoredWorkout,
@@ -290,6 +291,7 @@ async function saveCurrentWeight() {
   try {
     const today = getTodayDate();
 
+    // Always save the viewed profile locally.
     await setWeightForDate(
       activeProfile,
       today,
@@ -299,6 +301,30 @@ async function saveCurrentWeight() {
     setCurrentWeight(parsedWeight);
     setWeightInput('');
     setShowWeightForm(false);
+
+    // Only sync to Supabase when the viewed
+    // profile belongs to the signed-in account.
+    const isSignedInProfile =
+      currentProfile?.name ===
+      signedInCloudProfileName;
+
+    if (isSignedInProfile) {
+      try {
+        await syncWeightToCloud(
+          today,
+          parsedWeight
+        );
+      } catch (cloudError) {
+        console.error(
+          'Unable to sync weight to cloud:',
+          cloudError
+        );
+      }
+    } else {
+      console.log(
+        'Skipping cloud weight sync because the viewed profile is not the signed-in profile.'
+      );
+    }
   } catch (error) {
     console.error(
       'Unable to save weight:',

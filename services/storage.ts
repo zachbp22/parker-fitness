@@ -498,6 +498,42 @@ export async function syncWaterToCloud(
     throw error;
   }
 }
+export async function syncWeightToCloud(
+  date: string,
+  weight: number
+): Promise<void> {
+  const cloudProfile =
+    await getCurrentUserCloudProfile();
+
+  if (!cloudProfile) {
+    throw new Error(
+      'No cloud profile found for the signed-in user.'
+    );
+  }
+
+  const { error } = await supabase
+    .from('weight_entries')
+    .upsert(
+      {
+        profile_id: cloudProfile.id,
+        entry_date: date,
+        weight,
+        updated_at: new Date().toISOString(),
+      },
+      {
+        onConflict: 'profile_id,entry_date',
+      }
+    );
+
+  if (error) {
+    console.error(
+      'Unable to sync weight to cloud:',
+      error
+    );
+
+    throw error;
+  }
+}
 /*
  * ============================================================
  * WEIGHT STORAGE
