@@ -49,6 +49,7 @@ export type Profile = {
   calorieGoal: number;
   proteinGoal: number;
   weightGoal?: number;
+  cloudProfileId?: string;
 };
 export type StoredWater = {
   profileId: ProfileId;
@@ -98,21 +99,28 @@ export type StoredWorkoutDraft = {
 };
 export const PROFILES: Record<string, Profile> = {
   zach: {
-  id: 'zach',
-  name: 'Zach',
-  calorieGoal: 2000,
-  proteinGoal: 160,
-  weightGoal: 200,
-},
+    id: 'zach',
+    name: 'Zach',
+    calorieGoal: 2000,
+    proteinGoal: 160,
+    weightGoal: 200,
+    cloudProfileId: '44fb0eec-3ed6-434c-a80c-ea0f35456c69',
+  },
 
-wife: {
-  id: 'wife',
-  name: 'Jodi',
-  calorieGoal: 1600,
-  proteinGoal: 120,
-  weightGoal: 150,
-},
+  wife: {
+    id: 'wife',
+    name: 'Jodi',
+    calorieGoal: 1600,
+    proteinGoal: 120,
+    weightGoal: 150,
+    cloudProfileId: 'ed1a2c1f-0f4a-48cd-85a9-21e7b997e62b',
+  },
 };
+export function getCloudProfileId(
+  profileId: ProfileId
+): string | undefined {
+  return PROFILES[profileId]?.cloudProfileId;
+}
 export async function saveProfiles(
   profiles: Profile[]
 ): Promise<void> {
