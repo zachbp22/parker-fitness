@@ -1130,6 +1130,28 @@ const proteinGoal =
     TEST CLOUD LOGIN
   </Text>
 </Pressable>
+<Pressable
+  onPress={() => router.push('/household')}
+  style={{
+    backgroundColor: '#1c1f26',
+    borderWidth: 1,
+    borderColor: '#2D6B48',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    marginBottom: 10,
+  }}
+>
+  <Text
+    style={{
+      color: '#2D6B48',
+      fontWeight: '800',
+      textAlign: 'center',
+    }}
+  >
+    HOUSEHOLD
+  </Text>
+</Pressable>
       <Text style={styles.smallHeading}>
         PARKER FITNESS
       </Text>

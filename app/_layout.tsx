@@ -24,6 +24,14 @@ export default function RootLayout() {
     name="profiles"
     options={{ headerShown: false }}
   /> 
+  <Stack.Screen
+  name="household"
+  options={{ headerShown: false }}
+/>
+<Stack.Screen
+  name="join-household"
+  options={{ headerShown: false }}
+/>
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
       </Stack>
       <StatusBar style="auto" />

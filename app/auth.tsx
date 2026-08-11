@@ -94,7 +94,31 @@ export default function AuthScreen() {
         return;
       }
 
-      router.replace('/(tabs)');
+      const { data: invitationData, error: invitationError } =
+  await supabase.rpc(
+    'get_my_pending_household_invitation'
+  );
+
+if (invitationError) {
+  console.error(
+    'Invitation check error:',
+    invitationError
+  );
+
+  Alert.alert(
+    'Sign In Error',
+    'Signed in successfully, but Parker Fitness could not check your household status.'
+  );
+
+  return;
+}
+
+if (invitationData?.length) {
+  router.replace('/join-household');
+  return;
+}
+
+router.replace('/(tabs)');
     } catch (error) {
       console.error(
         'Sign in error:',
@@ -155,12 +179,36 @@ export default function AuthScreen() {
         return;
       }
 
-      Alert.alert(
-        'Account Created',
-        'Your Parker Fitness account is ready.'
-      );
+     const { data: invitationData, error: invitationError } =
+  await supabase.rpc(
+    'get_my_pending_household_invitation'
+  );
 
-      router.replace('/(tabs)');
+if (invitationError) {
+  console.error(
+    'Invitation check error:',
+    invitationError
+  );
+
+  Alert.alert(
+    'Account Created',
+    'Your account was created, but Parker Fitness could not check your household invitation.'
+  );
+
+  return;
+}
+
+if (invitationData?.length) {
+  router.replace('/join-household');
+  return;
+}
+
+Alert.alert(
+  'Account Created',
+  'Your Parker Fitness account is ready.'
+);
+
+router.replace('/(tabs)');
     } catch (error) {
       console.error(
         'Create account error:',
