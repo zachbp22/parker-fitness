@@ -123,7 +123,6 @@ async function testWaterCloud() {
     const today = getTodayDate();
 
     await syncWaterToCloud(
-      'wife',
       today,
       64
     );
@@ -131,16 +130,16 @@ async function testWaterCloud() {
     console.log(
       'CLOUD WATER TEST SUCCESS:',
       {
-        profileId: 'wife',
+        profileId: 'authenticated user',
         date: today,
         ounces: 64,
       }
     );
 
     Alert.alert(
-      'Water Cloud Test',
-      `Successfully synced 64 oz for Zach on ${today}.`
-    );
+  'Water Cloud Test',
+  `Successfully synced 64 oz for the signed-in profile on ${today}.`
+);
   } catch (error) {
     console.error(
       'Cloud water test failed:',

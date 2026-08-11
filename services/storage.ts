@@ -1,4 +1,7 @@
-import { supabase } from '@/services/supabase';
+import {
+  getCurrentUserCloudProfile,
+  supabase,
+} from '@/services/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 const FOOD_STORAGE_KEY = '@parker_fitness_foods';
 const ACTIVE_PROFILE_KEY = '@parker_fitness_active_profile';
@@ -455,15 +458,15 @@ export async function setWaterForDate(
   await saveWater(water);
 }
 export async function syncWaterToCloud(
-  profileId: ProfileId,
   date: string,
   ounces: number
 ): Promise<void> {
-  const cloudProfileId = getCloudProfileId(profileId);
+  const cloudProfile =
+    await getCurrentUserCloudProfile();
 
-  if (!cloudProfileId) {
+  if (!cloudProfile) {
     throw new Error(
-      `No cloud profile is mapped to "${profileId}".`
+      'No cloud profile found for the signed-in user.'
     );
   }
 
@@ -476,7 +479,7 @@ export async function syncWaterToCloud(
     .from('water_entries')
     .upsert(
       {
-        profile_id: cloudProfileId,
+        profile_id: cloudProfile.id,
         entry_date: date,
         ounces: safeOunces,
         updated_at: new Date().toISOString(),

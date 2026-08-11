@@ -26,11 +26,15 @@ import {
   saveWorkoutDraft,
   setWaterForDate,
   setWeightForDate,
+  syncWaterToCloud,
   type Profile,
   type ProfileId,
   type StoredWorkout,
   type StoredWorkoutDraft
 } from '@/services/storage';
+import {
+  getCurrentUserCloudProfile,
+} from '@/services/supabase';
 import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -151,6 +155,31 @@ const [profiles, setProfiles] =
 
 const [currentProfile, setCurrentProfile] =
   useState<Profile | null>(null);
+  const [
+  signedInCloudProfileName,
+  setSignedInCloudProfileName,
+] = useState<string | null>(null);
+  useEffect(() => {
+  async function loadSignedInCloudProfile() {
+    try {
+      const cloudProfile =
+        await getCurrentUserCloudProfile();
+
+      setSignedInCloudProfileName(
+        cloudProfile?.name ?? null
+      );
+    } catch (error) {
+      console.error(
+        'Unable to load signed-in cloud profile:',
+        error
+      );
+
+      setSignedInCloudProfileName(null);
+    }
+  }
+
+  loadSignedInCloudProfile();
+}, []);
 const [waterOunces, setWaterOunces] =
   useState(0);
   const [currentWeight, setCurrentWeight] =
@@ -213,6 +242,28 @@ async function updateWater(amount: number) {
       today,
       newAmount
     );
+
+    const isSignedInProfile =
+      currentProfile?.name ===
+      signedInCloudProfileName;
+
+    if (isSignedInProfile) {
+      try {
+        await syncWaterToCloud(
+          today,
+          newAmount
+        );
+      } catch (cloudError) {
+        console.error(
+          'Unable to sync water to cloud:',
+          cloudError
+        );
+      }
+    } else {
+      console.log(
+        'Skipping cloud water sync because the viewed profile is not the signed-in profile.'
+      );
+    }
   } catch (error) {
     console.error(
       'Unable to update water:',
