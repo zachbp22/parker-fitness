@@ -1111,6 +1111,25 @@ const proteinGoal =
         styles.content
       }
     >
+      <Pressable
+  onPress={() => router.push('/auth')}
+  style={{
+    backgroundColor: '#1f6b45',
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 20,
+  }}
+>
+  <Text
+    style={{
+      color: '#ffffff',
+      fontWeight: '800',
+      textAlign: 'center',
+    }}
+  >
+    TEST CLOUD LOGIN
+  </Text>
+</Pressable>
       <Text style={styles.smallHeading}>
         PARKER FITNESS
       </Text>
