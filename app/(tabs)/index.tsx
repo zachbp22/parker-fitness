@@ -28,6 +28,7 @@ import {
   setWeightForDate,
   syncWaterToCloud,
   syncWeightToCloud,
+  syncWorkoutToCloud,
   type Profile,
   type ProfileId,
   type StoredWorkout,
@@ -35,6 +36,7 @@ import {
 } from '@/services/storage';
 import {
   getCurrentUserCloudProfile,
+  supabase,
 } from '@/services/supabase';
 import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
@@ -925,6 +927,7 @@ workout.exercises.forEach(
 setNewPRs(detectedPRs);
 
 await addWorkout(workout);
+await syncWorkoutToCloud(workout);
 
 await clearWorkoutDraft(
   activeProfile
@@ -1181,6 +1184,29 @@ const proteinGoal =
         food.meal === 'Dinner'
     );
 
+  async function handleSignOut() {
+    try {
+      const { error } =
+        await supabase.auth.signOut();
+
+      if (error) {
+        throw error;
+      }
+
+      router.replace('/auth');
+    } catch (error) {
+      console.error(
+        'Unable to sign out:',
+        error
+      );
+
+      Alert.alert(
+        'Unable to Sign Out',
+        'There was a problem signing out. Please try again.'
+      );
+    }
+  }
+
   return (
     <ScrollView
       style={styles.screen}
@@ -1189,24 +1215,24 @@ const proteinGoal =
       }
     >
       <Pressable
-  onPress={() => router.push('/auth')}
-  style={{
-    backgroundColor: '#1f6b45',
-    padding: 14,
-    borderRadius: 12,
-    marginBottom: 20,
-  }}
->
-  <Text
-    style={{
-      color: '#ffffff',
-      fontWeight: '800',
-      textAlign: 'center',
-    }}
-  >
-    TEST CLOUD LOGIN
-  </Text>
-</Pressable>
+        onPress={handleSignOut}
+        style={{
+          backgroundColor: '#1f6b45',
+          padding: 14,
+          borderRadius: 12,
+          marginBottom: 20,
+        }}
+      >
+        <Text
+          style={{
+            color: '#ffffff',
+            fontWeight: '800',
+            textAlign: 'center',
+          }}
+        >
+          SIGN OUT
+        </Text>
+      </Pressable>
 <Pressable
   onPress={() => router.push('/household')}
   style={{
@@ -3215,3 +3241,8 @@ summaryCard: {
     fontWeight: '900',
   },
 });
+
+
+
+
+

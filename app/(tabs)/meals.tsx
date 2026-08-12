@@ -1,4 +1,7 @@
-﻿import { router, useLocalSearchParams } from 'expo-router';
+import {
+  getCurrentUserCloudProfile,
+} from '@/services/supabase';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -20,6 +23,7 @@ import {
 import {
   addDateToExistingFoods,
   addProfileToExistingFoods,
+  deleteFoodFromCloud,
   getProfile,
   getTodayDate,
   loadActiveProfile,
@@ -29,6 +33,7 @@ import {
   saveActiveProfile,
   saveFavoriteFoods,
   saveFoods,
+  syncFoodToCloud,
   type FavoriteFood,
   type Profile,
   type ProfileId
@@ -102,12 +107,38 @@ const [profiles, setProfiles] =
   useState<Profile[]>([]);
 
 const [currentProfile, setCurrentProfile] =
-  useState({
+  useState<Profile>({
     id: 'loading',
     name: 'User',
     calorieGoal: 0,
     proteinGoal: 0,
+    cloudProfileId: undefined,
   });
+  const [
+  signedInCloudProfileId,
+  setSignedInCloudProfileId,
+] = useState<string | null>(null);
+useEffect(() => {
+  async function loadSignedInCloudProfile() {
+    try {
+      const cloudProfile =
+        await getCurrentUserCloudProfile();
+
+      setSignedInCloudProfileId(
+        cloudProfile?.id ?? null
+      );
+    } catch (error) {
+      console.error(
+        'Unable to load signed-in cloud profile:',
+        error
+      );
+
+      setSignedInCloudProfileId(null);
+    }
+  }
+
+  loadSignedInCloudProfile();
+}, []);
 
 useEffect(() => {
   async function loadCurrentProfile() {
@@ -469,7 +500,6 @@ if (savedFoods !== null) {
       );
     }
   }
-
   function openAddFood(meal: MealType) {
     resetModal();
     setSelectedMeal(meal);
@@ -539,15 +569,50 @@ if (savedFoods !== null) {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Copy',
-          onPress: () => {
+          onPress: async () => {
             const copiedFoods: FoodItem[] = foodsToCopy.map((food) => ({
               ...food,
               id: createId(),
               date: selectedDate,
               profileId: activeProfile,
             }));
-            setFoods((currentFoods) => [...currentFoods, ...copiedFoods]);
-            Alert.alert('Meal copied', `${meal} was copied successfully.`);
+           setFoods((currentFoods) => [
+  ...currentFoods,
+  ...copiedFoods,
+]);
+
+const isSignedInProfile =
+  currentProfile.cloudProfileId ===
+      signedInCloudProfileId;
+
+if (isSignedInProfile) {
+  try {
+    await Promise.all(
+      copiedFoods.map((food) =>
+        syncFoodToCloud(food)
+      )
+    );
+  } catch (cloudError) {
+    console.error(
+      'Unable to sync copied meal to cloud:',
+      cloudError
+    );
+
+    Alert.alert(
+      'Food Cloud Sync Error',
+      cloudError instanceof Error
+        ? cloudError.message
+        : JSON.stringify(cloudError)
+    );
+
+    return;
+  }
+}
+
+Alert.alert(
+  'Meal copied',
+  `${meal} was copied successfully.`
+);
           },
         },
       ]
@@ -580,18 +645,50 @@ if (savedFoods !== null) {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Copy Day',
-          onPress: () => {
+          onPress: async () => {
             const copiedFoods: FoodItem[] = foodsToCopy.map((food) => ({
               ...food,
               id: createId(),
               date: selectedDate,
               profileId: activeProfile,
             }));
-            setFoods((currentFoods) => [...currentFoods, ...copiedFoods]);
-            Alert.alert(
-              'Day copied',
-              `All foods from ${formatDisplayDate(previousDate)} were copied successfully.`
-            );
+           setFoods((currentFoods) => [
+  ...currentFoods,
+  ...copiedFoods,
+]);
+
+const isSignedInProfile =
+  currentProfile.cloudProfileId ===
+      signedInCloudProfileId;
+
+if (isSignedInProfile) {
+  try {
+    await Promise.all(
+      copiedFoods.map((food) =>
+        syncFoodToCloud(food)
+      )
+    );
+  } catch (cloudError) {
+    console.error(
+      'Unable to sync copied day to cloud:',
+      cloudError
+    );
+
+    Alert.alert(
+      'Food Cloud Sync Error',
+      cloudError instanceof Error
+        ? cloudError.message
+        : JSON.stringify(cloudError)
+    );
+
+    return;
+  }
+}
+
+Alert.alert(
+  'Day copied',
+  `All foods from ${formatDisplayDate(previousDate)} were copied successfully.`
+);
           },
         },
       ]
@@ -721,7 +818,7 @@ if (savedFoods !== null) {
     setSelectedAmount('1');
   }
 
-  function saveSearchedFood() {
+  async function saveSearchedFood() {
     if (
       !selectedSearchFood ||
       !selectedNutrition
@@ -758,15 +855,44 @@ if (savedFoods !== null) {
       usdaFoodId: selectedSearchFood.id,
     };
 
-    setFoods((currentFoods) => [
-      ...currentFoods,
-      foodData,
-    ]);
+   setFoods((currentFoods) => [
+  ...currentFoods,
+  foodData,
+]);
 
-    closeModal();
+const isSignedInProfile =
+  currentProfile.cloudProfileId ===
+      signedInCloudProfileId;
+
+if (isSignedInProfile) {
+  try {
+    await syncFoodToCloud(foodData);
+
+  
+  } catch (cloudError) {
+    console.error(
+      'Unable to sync USDA food to cloud:',
+      cloudError
+    );
+
+    Alert.alert(
+      'Food Cloud Sync Error',
+      cloudError instanceof Error
+        ? cloudError.message
+        : JSON.stringify(cloudError)
+    );
+  }
+} else {
+  Alert.alert(
+    'USDA Cloud Skipped',
+    'The viewed profile does not match the signed-in cloud profile.'
+  );
+}
+
+closeModal();
   }
 
-  function saveManualFood() {
+async function saveManualFood() {
     const parsedCalories = Number(calories);
     const parsedProtein = Number(protein);
     const parsedCarbs = Number(carbs);
@@ -867,7 +993,7 @@ if (savedFoods !== null) {
       usdaFoodId: existingFood?.usdaFoodId,
     };
 
-    if (editingFoodId) {
+      if (editingFoodId) {
       setFoods((currentFoods) =>
         currentFoods.map((food) =>
           food.id === editingFoodId
@@ -882,12 +1008,38 @@ if (savedFoods !== null) {
       ]);
     }
 
+    const isSignedInProfile =
+      currentProfile.cloudProfileId ===
+      signedInCloudProfileId;
+
+    if (isSignedInProfile) {
+      try {
+        await syncFoodToCloud(foodData);
+     } catch (cloudError) {
+  console.error(
+    'Unable to sync food to cloud:',
+    cloudError
+  );
+
+  Alert.alert(
+    'Food Cloud Sync Error',
+    cloudError instanceof Error
+      ? cloudError.message
+      : JSON.stringify(cloudError)
+  );
+}
+    } else {
+      console.log(
+        'Skipping cloud food sync because the viewed profile is not the signed-in profile.'
+      );
+    }
+
     closeModal();
   }
 
-  function addReusableFood(
-    food: FoodItem | FavoriteFood
-  ) {
+ async function addReusableFood(
+  food: FoodItem | FavoriteFood
+) {
     const newFood: FoodItem = {
       id: createId(),
       name: food.name,
@@ -904,12 +1056,38 @@ if (savedFoods !== null) {
       usdaFoodId: food.usdaFoodId,
     };
 
-    setFoods((currentFoods) => [
-      ...currentFoods,
-      newFood,
-    ]);
+  setFoods((currentFoods) => [
+  ...currentFoods,
+  newFood,
+]);
 
-    closeModal();
+const isSignedInProfile =
+  currentProfile.cloudProfileId ===
+      signedInCloudProfileId;
+
+if (isSignedInProfile) {
+  try {
+    await syncFoodToCloud(newFood);
+  } catch (cloudError) {
+    console.error(
+      'Unable to sync reusable food to cloud:',
+      cloudError
+    );
+
+    Alert.alert(
+      'Food Cloud Sync Error',
+      cloudError instanceof Error
+        ? cloudError.message
+        : JSON.stringify(cloudError)
+    );
+  }
+} else {
+  console.log(
+    'Skipping reusable food cloud sync because the viewed profile is not the signed-in profile.'
+  );
+}
+
+closeModal();
   }
 
   function adjustReusableFood(
@@ -992,14 +1170,44 @@ if (savedFoods !== null) {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => {
-            setFoods((currentFoods) =>
-              currentFoods.filter(
-                (food) => food.id !== id
-              )
-            );
+         onPress: async () => {
+  const foodToDelete = foods.find(
+    (food) => food.id === id
+  );
+
+  if (!foodToDelete) {
+    return;
+  }
+
+  const isSignedInProfile =
+    currentProfile.cloudProfileId ===
+      signedInCloudProfileId;
+
+  if (isSignedInProfile) {
+    try {
+      await deleteFoodFromCloud(id);
+    } catch (cloudError) {
+      console.error(
+        'Unable to delete food from cloud:',
+        cloudError
+      );
+
+      Alert.alert(
+        'Unable to Delete',
+        'The food could not be deleted from the cloud.'
+      );
+
+      return;
+    }
+  }
+
+  setFoods((currentFoods) =>
+    currentFoods.filter(
+      (food) => food.id !== id
+    )
+  );
+},
           },
-        },
       ]
     );
   }
@@ -1056,6 +1264,7 @@ if (savedFoods !== null) {
 <Text style={styles.profileStatus}>
   Viewing {currentProfile.name}'s nutrition
 </Text>
+
         </View>
 
         <View style={styles.dateCard}>
@@ -1064,7 +1273,7 @@ if (savedFoods !== null) {
             onPress={() => changeDate(-1)}
           >
             <Text style={styles.dateArrow}>
-              ‹
+              �
             </Text>
           </Pressable>
 
@@ -1100,7 +1309,7 @@ if (savedFoods !== null) {
                   styles.dateArrowTextDisabled,
               ]}
             >
-              ›
+              �
             </Text>
           </Pressable>
         </View>
@@ -1127,7 +1336,7 @@ if (savedFoods !== null) {
 
         <View style={styles.calorieCard}>
           <Text style={styles.summaryLabel}>
-            {currentProfile.name.toUpperCase()} • CALORIES LOGGED
+            {currentProfile.name.toUpperCase()} � CALORIES LOGGED
           </Text>
 
           <Text style={styles.calorieValue}>
@@ -1215,9 +1424,9 @@ if (savedFoods !== null) {
                       </Text>
 
                       <Text style={styles.foodDetails}>
-                        {food.calories} cal •{' '}
-                        {food.protein}g protein •{' '}
-                        {food.carbs}g carbs •{' '}
+                        {food.calories} cal �{' '}
+                        {food.protein}g protein �{' '}
+                        {food.carbs}g carbs �{' '}
                         {food.fat}g fat
                       </Text>
 
@@ -1242,7 +1451,7 @@ if (savedFoods !== null) {
                         hitSlop={8}
                       >
                         <Text style={styles.favoriteText}>
-                          {isFavorite(food) ? '★ Favorite' : '☆ Favorite'}
+                          {isFavorite(food) ? '? Favorite' : '? Favorite'}
                         </Text>
                       </Pressable>
 
@@ -1466,13 +1675,13 @@ if (savedFoods !== null) {
                         )}
 
                         <Text style={styles.resultNutrition}>
-                          Per 100 g: {result.calories} cal •{' '}
-                          {result.protein}g protein •{' '}
-                          {result.carbs}g carbs • {result.fat}g fat
+                          Per 100 g: {result.calories} cal �{' '}
+                          {result.protein}g protein �{' '}
+                          {result.carbs}g carbs � {result.fat}g fat
                         </Text>
                       </View>
 
-                      <Text style={styles.selectArrow}>›</Text>
+                      <Text style={styles.selectArrow}>�</Text>
                     </Pressable>
                   ))}
                 </>
@@ -1633,8 +1842,8 @@ function ReusableFoodSection({
             </Text>
 
             <Text style={styles.resultNutrition}>
-              {food.calories} cal • {food.protein}g protein •{' '}
-              {food.carbs}g carbs • {food.fat}g fat
+              {food.calories} cal � {food.protein}g protein �{' '}
+              {food.carbs}g carbs � {food.fat}g fat
             </Text>
 
             <View style={styles.reusableActions}>
@@ -1792,8 +2001,8 @@ function SelectedFoodCard({
           </Text>
 
           <Text style={styles.previewMacros}>
-            {nutrition.protein}g protein •{' '}
-            {nutrition.carbs}g carbs •{' '}
+            {nutrition.protein}g protein �{' '}
+            {nutrition.carbs}g carbs �{' '}
             {nutrition.fat}g fat
           </Text>
 
@@ -2847,3 +3056,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
+
+
+
+
+

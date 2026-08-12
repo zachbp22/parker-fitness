@@ -1,3 +1,9 @@
+import {
+  restoreFoodsFromCloud,
+  restoreWaterFromCloud,
+  restoreWeightsFromCloud,
+  restoreWorkoutsFromCloud,
+} from '@/services/storage';
 import { supabase } from '@/services/supabase';
 import { router } from 'expo-router';
 import { useState } from 'react';
@@ -118,6 +124,27 @@ if (invitationData?.length) {
   return;
 }
 
+try {
+await Promise.all([
+    restoreFoodsFromCloud(),
+    restoreWaterFromCloud(),
+    restoreWeightsFromCloud(),
+    restoreWorkoutsFromCloud(),
+  ]);
+
+  console.log(
+    'Initial cloud restore completed successfully.'
+  );
+} catch (syncError) {
+  console.error(
+    'Initial cloud restore failed:',
+    syncError
+  );
+
+  // Do not block sign-in if cloud restoration
+  // temporarily fails. Existing local data remains.
+}
+
 router.replace('/(tabs)');
     } catch (error) {
       console.error(
@@ -207,6 +234,27 @@ Alert.alert(
   'Account Created',
   'Your Parker Fitness account is ready.'
 );
+
+try {
+  await Promise.all([
+    restoreFoodsFromCloud(),
+    restoreWaterFromCloud(),
+    restoreWeightsFromCloud(),
+    restoreWorkoutsFromCloud(),
+  ]);
+
+  console.log(
+    'Initial cloud restore completed successfully.'
+  );
+} catch (syncError) {
+  console.error(
+    'Initial cloud restore failed:',
+    syncError
+  );
+
+  // Do not block sign-in if cloud restoration
+  // temporarily fails. Existing local data remains.
+}
 
 router.replace('/(tabs)');
     } catch (error) {
@@ -430,3 +478,5 @@ const styles = StyleSheet.create({
     marginTop: 24,
   },
 });
+
+

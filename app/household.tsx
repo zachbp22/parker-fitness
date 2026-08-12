@@ -1,5 +1,6 @@
 import {
   getTodayDate,
+  syncFoodToCloud,
   syncWaterToCloud,
 } from '@/services/storage';
 import {
@@ -152,6 +153,40 @@ async function testWaterCloud() {
     );
   }
 }
+async function testFoodCloud() {
+  try {
+    const today = getTodayDate();
+
+    await syncFoodToCloud({
+      id: `cloud-test-${Date.now()}`,
+      name: 'Cloud Test Chicken',
+      servingSize: '4',
+      servingUnit: 'oz',
+      calories: 180,
+      protein: 35,
+      carbs: 0,
+      fat: 4,
+      meal: 'Lunch',
+      date: today,
+      profileId: 'wife',
+    });
+
+    Alert.alert(
+      'Food Cloud Test',
+      'Cloud Test Chicken successfully synced.'
+    );
+  } catch (error) {
+    console.error(
+      'Cloud food test failed:',
+      error
+    );
+
+    Alert.alert(
+      'Food Cloud Error',
+      'Unable to sync food to Supabase.'
+    );
+  }
+}
   async function sendInvitation() {
     const cleanEmail =
       email.trim().toLowerCase();
@@ -289,6 +324,14 @@ async function testWaterCloud() {
 >
   <Text style={styles.secondaryButtonText}>
     TEST CLOUD PROFILES
+  </Text>
+</Pressable>
+<Pressable
+  style={styles.secondaryButton}
+  onPress={testFoodCloud}
+>
+  <Text style={styles.secondaryButtonText}>
+    TEST FOOD CLOUD
   </Text>
 </Pressable>
 <Pressable

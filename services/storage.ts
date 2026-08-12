@@ -30,6 +30,8 @@ export type StoredFood = {
   meal: string;
   date?: string;
   profileId?: ProfileId;
+ source?: 'manual' | 'usda' | 'barcode';
+usdaFoodId?: string; 
 };
 
 export type FavoriteFood = {
@@ -123,6 +125,25 @@ export function getCloudProfileId(
   profileId: ProfileId
 ): string | undefined {
   return PROFILES[profileId]?.cloudProfileId;
+}
+
+export function getLocalProfileIdFromCloudProfileId(
+  cloudProfileId: string
+): ProfileId {
+  const matchingProfile =
+    Object.values(PROFILES).find(
+      (profile) =>
+        profile.cloudProfileId ===
+        cloudProfileId
+    );
+
+  if (!matchingProfile) {
+    throw new Error(
+      `No local profile mapping found for cloud profile ${cloudProfileId}.`
+    );
+  }
+
+  return matchingProfile.id;
 }
 export async function saveProfiles(
   profiles: Profile[]
@@ -498,6 +519,89 @@ export async function syncWaterToCloud(
     throw error;
   }
 }
+export async function loadWaterFromCloud(): Promise<
+  StoredWater[]
+> {
+  const cloudProfile =
+    await getCurrentUserCloudProfile();
+
+  if (!cloudProfile) {
+    throw new Error(
+      'No cloud profile found for the signed-in user.'
+    );
+  }
+
+  const { data, error } = await supabase
+    .from('water_entries')
+    .select(`
+      entry_date,
+      ounces
+    `)
+    .eq('profile_id', cloudProfile.id)
+    .order('entry_date', {
+      ascending: true,
+    });
+
+  if (error) {
+    console.error(
+      'Unable to load water from cloud:',
+      error
+    );
+
+    throw error;
+  }
+
+  const localProfileId: ProfileId =
+    getLocalProfileIdFromCloudProfileId(
+      cloudProfile.id
+    );
+
+  return (data ?? []).map(
+    (row): StoredWater => ({
+      profileId: localProfileId,
+      date: row.entry_date,
+      ounces: Number(row.ounces),
+    })
+  );
+}
+export async function restoreWaterFromCloud(): Promise<
+  StoredWater[]
+> {
+  const cloudProfile =
+    await getCurrentUserCloudProfile();
+
+  if (!cloudProfile) {
+    throw new Error(
+      'No cloud profile found for the signed-in user.'
+    );
+  }
+
+  const localProfileId =
+    getLocalProfileIdFromCloudProfileId(
+      cloudProfile.id
+    );
+
+  const cloudWater =
+    await loadWaterFromCloud();
+
+  const localWater =
+    await loadWater();
+
+  const preservedOtherProfiles =
+    localWater.filter(
+      (entry) =>
+        entry.profileId !== localProfileId
+    );
+
+  const mergedWater = [
+    ...preservedOtherProfiles,
+    ...cloudWater,
+  ];
+
+  await saveWater(mergedWater);
+
+  return mergedWater;
+}
 export async function syncWeightToCloud(
   date: string,
   weight: number
@@ -643,6 +747,194 @@ export async function getWeightForDate(
   );
 
   return entry?.weight ?? null;
+}
+export async function loadWeightsFromCloud(): Promise<StoredWeight[]> {
+  const cloudProfile =
+    await getCurrentUserCloudProfile();
+
+  if (!cloudProfile) {
+    throw new Error(
+      'No cloud profile found for the signed-in user.'
+    );
+  }
+
+  const { data, error } = await supabase
+    .from('weight_entries')
+    .select('entry_date, weight')
+    .eq('profile_id', cloudProfile.id)
+    .order('entry_date', {
+      ascending: true,
+    });
+
+  if (error) {
+    console.error(
+      'Unable to load weights from cloud:',
+      error
+    );
+
+    throw error;
+  }
+
+  const localProfileId: ProfileId =
+    getLocalProfileIdFromCloudProfileId(
+      cloudProfile.id
+    );
+
+  return (data ?? []).map(
+    (row): StoredWeight => ({
+      profileId: localProfileId,
+      date: row.entry_date,
+      weight: Number(row.weight),
+    })
+  );
+}
+
+export async function restoreWeightsFromCloud(): Promise<
+  StoredWeight[]
+> {
+  const cloudProfile =
+    await getCurrentUserCloudProfile();
+
+  if (!cloudProfile) {
+    throw new Error(
+      'No cloud profile found for the signed-in user.'
+    );
+  }
+
+  const localProfileId =
+    getLocalProfileIdFromCloudProfileId(
+      cloudProfile.id
+    );
+
+  const cloudWeights =
+    await loadWeightsFromCloud();
+
+  const localWeights =
+    await loadWeights();
+
+  const preservedOtherProfiles =
+    localWeights.filter(
+      (entry) =>
+        entry.profileId !== localProfileId
+    );
+
+  const mergedWeights = [
+    ...preservedOtherProfiles,
+    ...cloudWeights,
+  ];
+
+  await saveWeights(mergedWeights);
+
+  return mergedWeights;
+}
+export async function loadWorkoutsFromCloud(): Promise<StoredWorkout[]> {
+  const cloudProfile =
+    await getCurrentUserCloudProfile();
+
+  if (!cloudProfile) {
+    throw new Error(
+      'No cloud profile is linked to the signed-in user.'
+    );
+  }
+
+  const { data, error } = await supabase
+    .from('workouts')
+    .select(`
+      local_id,
+      workout_date,
+      completed_at,
+      workout_name,
+      workout_type,
+      duration_seconds,
+      completed_sets,
+      total_sets,
+      total_volume,
+      exercises
+    `)
+    .eq('profile_id', cloudProfile.id)
+    .order('completed_at', {
+      ascending: false,
+    });
+
+  if (error) {
+    console.error(
+      'Unable to load workouts from cloud:',
+      error
+    );
+    throw error;
+  }
+
+  const localProfileId: ProfileId =
+    getLocalProfileIdFromCloudProfileId(
+      cloudProfile.id
+    );
+
+  return (data ?? []).map(
+    (row): StoredWorkout => ({
+      id: row.local_id,
+      profileId: localProfileId,
+      date: row.workout_date,
+      completedAt: row.completed_at,
+      workoutName: row.workout_name,
+      workoutType: row.workout_type,
+      durationSeconds: Number(
+        row.duration_seconds
+      ),
+      completedSets: Number(
+        row.completed_sets
+      ),
+      totalSets: Number(
+        row.total_sets
+      ),
+      totalVolume: Number(
+        row.total_volume
+      ),
+      exercises: Array.isArray(
+        row.exercises
+      )
+        ? row.exercises
+        : [],
+    })
+  );
+}
+
+export async function restoreWorkoutsFromCloud(): Promise<
+  StoredWorkout[]
+> {
+  const cloudProfile =
+    await getCurrentUserCloudProfile();
+
+  if (!cloudProfile) {
+    throw new Error(
+      'No cloud profile is linked to the signed-in user.'
+    );
+  }
+
+  const localProfileId =
+    getLocalProfileIdFromCloudProfileId(
+      cloudProfile.id
+    );
+
+  const cloudWorkouts =
+    await loadWorkoutsFromCloud();
+
+  const localWorkouts =
+    await loadWorkouts();
+
+  const preservedOtherProfiles =
+    localWorkouts.filter(
+      (workout) =>
+        workout.profileId !== localProfileId
+    );
+
+  const mergedWorkouts = [
+    ...preservedOtherProfiles,
+    ...cloudWorkouts,
+  ];
+
+  await saveWorkouts(mergedWorkouts);
+
+  return mergedWorkouts;
 }
 export async function getLatestWeight(
   profileId: ProfileId
@@ -1532,4 +1824,254 @@ export async function clearWorkoutDraft(
     );
     throw error;
   }
+}
+export async function syncFoodToCloud(
+  food: StoredFood
+): Promise<void> {
+  const cloudProfile =
+    await getCurrentUserCloudProfile();
+
+  if (!cloudProfile) {
+    throw new Error(
+      'No cloud profile found for the signed-in user.'
+    );
+  }
+
+  const localProfileId =
+    getLocalProfileIdFromCloudProfileId(
+      cloudProfile.id
+    );
+
+  if (food.profileId !== localProfileId) {
+    throw new Error(
+      `Refusing to sync food for profile ${food.profileId ?? 'unknown'} while signed in as ${localProfileId}.`
+    );
+  }
+
+  const entryDate =
+    food.date ?? getTodayDate();
+
+  const { error } = await supabase
+    .from('food_entries')
+    .upsert(
+      {
+        profile_id: cloudProfile.id,
+        local_id: food.id,
+        entry_date: entryDate,
+        meal: food.meal,
+        name: food.name,
+        serving_size: food.servingSize,
+        serving_unit: food.servingUnit,
+        calories: food.calories,
+        protein: food.protein,
+        carbs: food.carbs,
+        fat: food.fat,
+        source: food.source ?? null,
+        usda_food_id:
+          food.usdaFoodId ?? null,
+        updated_at:
+          new Date().toISOString(),
+      },
+      {
+        onConflict:
+          'profile_id,local_id',
+      }
+    );
+
+  if (error) {
+    console.error(
+      'Unable to sync food to cloud:',
+      error
+    );
+
+    throw error;
+  }
+}
+export async function deleteFoodFromCloud(
+  localId: string
+): Promise<void> {
+  const cloudProfile =
+    await getCurrentUserCloudProfile();
+
+  if (!cloudProfile) {
+    throw new Error(
+      'No cloud profile is linked to the signed-in user.'
+    );
+  }
+
+  const { error } = await supabase
+    .from('food_entries')
+    .delete()
+    .eq('profile_id', cloudProfile.id)
+    .eq('local_id', localId);
+
+  if (error) {
+    console.error(
+      'Unable to delete food from cloud:',
+      error
+    );
+
+    throw error;
+  }
+}
+export async function syncWorkoutToCloud(
+  workout: StoredWorkout
+): Promise<void> {
+  const cloudProfile =
+    await getCurrentUserCloudProfile();
+
+  if (!cloudProfile) {
+    throw new Error(
+      'No cloud profile is linked to the signed-in user.'
+    );
+  }
+
+  const { error } = await supabase
+    .from('workouts')
+    .upsert(
+      {
+        profile_id: cloudProfile.id,
+        local_id: workout.id,
+        workout_date: workout.date,
+        completed_at: workout.completedAt,
+        workout_name: workout.workoutName,
+        workout_type: workout.workoutType,
+        duration_seconds:
+          workout.durationSeconds,
+        completed_sets:
+          workout.completedSets,
+        total_sets: workout.totalSets,
+        total_volume: workout.totalVolume,
+        exercises: workout.exercises,
+        updated_at:
+          new Date().toISOString(),
+      },
+      {
+        onConflict:
+          'profile_id,local_id',
+      }
+    );
+
+  if (error) {
+    console.error(
+      'Unable to sync workout to cloud:',
+      error
+    );
+
+    throw error;
+  }
+}
+   export async function loadFoodsFromCloud(): Promise<
+  StoredFood[]
+> {
+  const cloudProfile =
+    await getCurrentUserCloudProfile();
+
+  if (!cloudProfile) {
+    throw new Error(
+      'No cloud profile is linked to the signed-in user.'
+    );
+  }
+
+  const { data, error } = await supabase
+    .from('food_entries')
+    .select(
+      `
+        local_id,
+        entry_date,
+        meal,
+        name,
+        serving_size,
+        serving_unit,
+        calories,
+        protein,
+        carbs,
+        fat,
+        source,
+        usda_food_id
+      `
+    )
+    .eq('profile_id', cloudProfile.id)
+    .order('entry_date', {
+      ascending: true,
+    });
+
+  if (error) {
+    console.error(
+      'Unable to load foods from cloud:',
+      error
+    );
+
+    throw error;
+  }
+
+  return (data ?? []).map(
+    (row): StoredFood => ({
+      id: row.local_id,
+      name: row.name,
+      servingSize: row.serving_size,
+      servingUnit: row.serving_unit,
+      calories: Number(row.calories),
+      protein: Number(row.protein),
+      carbs: Number(row.carbs),
+      fat: Number(row.fat),
+      meal: row.meal,
+      date: row.entry_date,
+
+      // The signed-in cloud profile corresponds
+      // to this device's active local profile.
+      profileId:
+        getLocalProfileIdFromCloudProfileId(
+          cloudProfile.id
+        ),
+
+      source:
+        row.source === 'manual' ||
+        row.source === 'usda' ||
+        row.source === 'barcode'
+          ? row.source
+          : undefined,
+
+      usdaFoodId:
+        row.usda_food_id ?? undefined,
+    })
+  );
+}
+export async function restoreFoodsFromCloud(): Promise<
+  StoredFood[]
+> {
+  const cloudProfile =
+    await getCurrentUserCloudProfile();
+
+  if (!cloudProfile) {
+    throw new Error(
+      'No cloud profile is linked to the signed-in user.'
+    );
+  }
+
+  const localProfileId =
+    getLocalProfileIdFromCloudProfileId(
+      cloudProfile.id
+    );
+
+  const cloudFoods =
+    await loadFoodsFromCloud();
+
+  const localFoods =
+    (await loadFoods<StoredFood>()) ?? [];
+
+  const preservedOtherProfiles =
+    localFoods.filter(
+      (food) =>
+        food.profileId !== localProfileId
+    );
+
+  const mergedFoods = [
+    ...preservedOtherProfiles,
+    ...cloudFoods,
+  ];
+
+  await saveFoods(mergedFoods);
+
+  return mergedFoods;
 }
