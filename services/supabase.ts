@@ -77,8 +77,7 @@ export async function getCloudProfiles(): Promise<
 
   return data ?? [];
 }
-export async function getCurrentUserCloudProfile():
-  Promise<CloudProfile | null> {
+export async function getCurrentUserCloudProfile(): Promise<CloudProfile | null> {
   const {
     data: { user },
     error: userError,

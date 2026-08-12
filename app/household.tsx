@@ -1,13 +1,4 @@
-import {
-  getTodayDate,
-  syncFoodToCloud,
-  syncWaterToCloud,
-} from '@/services/storage';
-import {
-  getCloudProfiles,
-  getCurrentUserCloudProfile,
-  supabase,
-} from '@/services/supabase';
+import { supabase } from '@/services/supabase';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import {
@@ -27,166 +18,6 @@ export default function HouseholdScreen() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] =
     useState(false);
-async function testCloudProfiles() {
-  try {
-    const profiles =
-      await getCloudProfiles();
-
-    console.log(
-      'CLOUD PROFILES:',
-      profiles
-    );
-
-    Alert.alert(
-      'Cloud Profiles',
-      profiles
-        .map(
-          (profile) =>
-            `${profile.name}\n${profile.id}`
-        )
-        .join('\n\n')
-    );
-  } catch (error) {
-    console.error(
-      'Cloud profile test failed:',
-      error
-    );
-
-    Alert.alert(
-      'Cloud Profile Error',
-      'Unable to load cloud profiles.'
-    );
-  }
-}
-async function testCurrentCloudProfile() {
-  try {
-    const profile =
-      await getCurrentUserCloudProfile();
-
-    if (!profile) {
-      Alert.alert(
-        'Current Cloud Profile',
-        'No cloud profile found for the signed-in user.'
-      );
-      return;
-    }
-
-    console.log(
-      'CURRENT CLOUD PROFILE:',
-      profile
-    );
-
-    Alert.alert(
-      'Current Cloud Profile',
-      `${profile.name}\n${profile.id}`
-    );
-  } catch (error) {
-    console.error(
-      'Current cloud profile test failed:',
-      error
-    );
-
-    Alert.alert(
-      'Cloud Profile Error',
-      'Unable to identify the current cloud profile.'
-    );
-  }
-}
-async function testCurrentUser() {
-  try {
-    const {
-      data: { user },
-      error,
-    } = await supabase.auth.getUser();
-
-    if (error) {
-      throw error;
-    }
-
-    console.log(
-      'CURRENT SUPABASE USER:',
-      user?.id
-    );
-
-    Alert.alert(
-      'Current Supabase User',
-      user?.id ?? 'No authenticated user'
-    );
-  } catch (error) {
-    console.error(
-      'Current user test failed:',
-      error
-    );
-  }
-}
-async function testWaterCloud() {
-  try {
-    const today = getTodayDate();
-
-    await syncWaterToCloud(
-      today,
-      64
-    );
-
-    console.log(
-      'CLOUD WATER TEST SUCCESS:',
-      {
-        profileId: 'authenticated user',
-        date: today,
-        ounces: 64,
-      }
-    );
-
-    Alert.alert(
-  'Water Cloud Test',
-  `Successfully synced 64 oz for the signed-in profile on ${today}.`
-);
-  } catch (error) {
-    console.error(
-      'Cloud water test failed:',
-      error
-    );
-
-    Alert.alert(
-      'Water Cloud Error',
-      'Unable to sync water to Supabase.'
-    );
-  }
-}
-async function testFoodCloud() {
-  try {
-    const today = getTodayDate();
-
-    await syncFoodToCloud({
-      id: `cloud-test-${Date.now()}`,
-      name: 'Cloud Test Chicken',
-      servingSize: '4',
-      servingUnit: 'oz',
-      calories: 180,
-      protein: 35,
-      carbs: 0,
-      fat: 4,
-      meal: 'Lunch',
-      date: today,
-      profileId: 'wife',
-    });
-
-    Alert.alert(
-      'Food Cloud Test',
-      'Cloud Test Chicken successfully synced.'
-    );
-  } catch (error) {
-    console.error(
-      'Cloud food test failed:',
-      error
-    );
-
-    Alert.alert(
-      'Food Cloud Error',
-      'Unable to sync food to Supabase.'
-    );
-  }
-}
   async function sendInvitation() {
     const cleanEmail =
       email.trim().toLowerCase();
@@ -318,46 +149,6 @@ async function testFoodCloud() {
             autoCorrect={false}
             editable={!loading}
           />
-<Pressable
-  style={styles.secondaryButton}
-  onPress={testCloudProfiles}
->
-  <Text style={styles.secondaryButtonText}>
-    TEST CLOUD PROFILES
-  </Text>
-</Pressable>
-<Pressable
-  style={styles.secondaryButton}
-  onPress={testFoodCloud}
->
-  <Text style={styles.secondaryButtonText}>
-    TEST FOOD CLOUD
-  </Text>
-</Pressable>
-<Pressable
-  style={styles.secondaryButton}
-  onPress={testCurrentCloudProfile}
->
-  <Text style={styles.secondaryButtonText}>
-    TEST CURRENT CLOUD PROFILE
-  </Text>
-</Pressable>
-<Pressable
-  style={styles.secondaryButton}
-  onPress={testCurrentUser}
->
-  <Text style={styles.secondaryButtonText}>
-    TEST CURRENT USER
-  </Text>
-</Pressable>
-<Pressable
-  style={styles.secondaryButton}
-  onPress={testWaterCloud}
->
-  <Text style={styles.secondaryButtonText}>
-    TEST WATER CLOUD
-  </Text>
-</Pressable>
           <Pressable
             style={[
               styles.primaryButton,
@@ -379,10 +170,6 @@ async function testFoodCloud() {
               </Text>
             )}
           </Pressable>
-
-          <Text style={styles.note}>
-            Phase 2A household testing
-          </Text>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -499,29 +286,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
   },
-  secondaryButton: {
-  borderWidth: 1,
-  borderColor: '#4ade80',
-  borderRadius: 12,
-  paddingVertical: 15,
-  alignItems: 'center',
-  marginBottom: 18,
-},
-
-secondaryButtonText: {
-  color: '#4ade80',
-  fontSize: 16,
-  fontWeight: '800',
-},
 
   disabledButton: {
     opacity: 0.6,
-  },
-
-  note: {
-    color: '#71717a',
-    fontSize: 12,
-    textAlign: 'center',
-    marginTop: 24,
   },
 });

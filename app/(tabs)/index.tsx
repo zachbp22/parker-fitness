@@ -152,15 +152,15 @@ const [exercises, setExercises] =
   const [foods, setFoods] = useState<FoodItem[]>([]);
 
 const [activeProfile, setActiveProfile] =
-  useState('zach');
+  useState<ProfileId>('zach');
 const [profiles, setProfiles] =
   useState<Profile[]>([]);
 
 const [currentProfile, setCurrentProfile] =
   useState<Profile | null>(null);
   const [
-  signedInCloudProfileName,
-  setSignedInCloudProfileName,
+  signedInCloudProfileId,
+  setSignedInCloudProfileId,
 ] = useState<string | null>(null);
   useEffect(() => {
   async function loadSignedInCloudProfile() {
@@ -168,8 +168,8 @@ const [currentProfile, setCurrentProfile] =
       const cloudProfile =
         await getCurrentUserCloudProfile();
 
-      setSignedInCloudProfileName(
-        cloudProfile?.name ?? null
+      setSignedInCloudProfileId(
+        cloudProfile?.id ?? null
       );
     } catch (error) {
       console.error(
@@ -177,7 +177,7 @@ const [currentProfile, setCurrentProfile] =
         error
       );
 
-      setSignedInCloudProfileName(null);
+      setSignedInCloudProfileId(null);
     }
   }
 
@@ -247,8 +247,8 @@ async function updateWater(amount: number) {
     );
 
     const isSignedInProfile =
-      currentProfile?.name ===
-      signedInCloudProfileName;
+      currentProfile?.cloudProfileId ===
+      signedInCloudProfileId;
 
     if (isSignedInProfile) {
       try {
@@ -307,8 +307,8 @@ async function saveCurrentWeight() {
     // Only sync to Supabase when the viewed
     // profile belongs to the signed-in account.
     const isSignedInProfile =
-      currentProfile?.name ===
-      signedInCloudProfileName;
+      currentProfile?.cloudProfileId ===
+      signedInCloudProfileId;
 
     if (isSignedInProfile) {
       try {
@@ -512,9 +512,6 @@ if (workoutSeconds % 10 === 0) {
       0
     );
   }, [exercises]);
-async function clearAllTestDrafts() {
-  await clearWorkoutDraft();
-}
 async function startWorkout() {
     try {
 const draft =
@@ -1268,7 +1265,6 @@ const proteinGoal =
         Here is today's progress.
       </Text>
 <View style={styles.profileCard}>
-      <View style={styles.profileCard}>
         <Text style={styles.profileLabel}>
           ACTIVE PROFILE
         </Text>
@@ -1310,7 +1306,6 @@ const proteinGoal =
     Manage Profiles
   </Text>
 </Pressable>
-      </View>
 </View>
       <View style={styles.mainCard}>
         <Text style={styles.cardLabel}>
@@ -3241,8 +3236,5 @@ summaryCard: {
     fontWeight: '900',
   },
 });
-
-
-
 
 

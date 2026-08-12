@@ -101,7 +101,7 @@ export default function MealsScreen() {
     useState(false);
 
 const [activeProfile, setActiveProfile] =
-  useState('zach');
+  useState<ProfileId>('zach');
 
 const [profiles, setProfiles] =
   useState<Profile[]>([]);
@@ -152,6 +152,10 @@ useEffect(() => {
 
   loadCurrentProfile();
 }, [activeProfile]);
+
+const isSignedInProfile =
+  currentProfile.cloudProfileId ===
+  signedInCloudProfileId;
 
 const [selectedDate, setSelectedDate] = useState(
   getTodayDate()
@@ -378,7 +382,6 @@ if (savedFoods !== null) {
     selectedDate === getTodayDate();
 
 
-
   const profileFavorites = useMemo(
     () =>
       favorites.filter(
@@ -580,11 +583,6 @@ if (savedFoods !== null) {
   ...currentFoods,
   ...copiedFoods,
 ]);
-
-const isSignedInProfile =
-  currentProfile.cloudProfileId ===
-      signedInCloudProfileId;
-
 if (isSignedInProfile) {
   try {
     await Promise.all(
@@ -656,11 +654,6 @@ Alert.alert(
   ...currentFoods,
   ...copiedFoods,
 ]);
-
-const isSignedInProfile =
-  currentProfile.cloudProfileId ===
-      signedInCloudProfileId;
-
 if (isSignedInProfile) {
   try {
     await Promise.all(
@@ -859,11 +852,6 @@ Alert.alert(
   ...currentFoods,
   foodData,
 ]);
-
-const isSignedInProfile =
-  currentProfile.cloudProfileId ===
-      signedInCloudProfileId;
-
 if (isSignedInProfile) {
   try {
     await syncFoodToCloud(foodData);
@@ -883,9 +871,8 @@ if (isSignedInProfile) {
     );
   }
 } else {
-  Alert.alert(
-    'USDA Cloud Skipped',
-    'The viewed profile does not match the signed-in cloud profile.'
+  console.log(
+    'Skipping USDA food cloud sync because the viewed profile is not the signed-in profile.'
   );
 }
 
@@ -1007,11 +994,6 @@ async function saveManualFood() {
         foodData,
       ]);
     }
-
-    const isSignedInProfile =
-      currentProfile.cloudProfileId ===
-      signedInCloudProfileId;
-
     if (isSignedInProfile) {
       try {
         await syncFoodToCloud(foodData);
@@ -1060,11 +1042,6 @@ async function saveManualFood() {
   ...currentFoods,
   newFood,
 ]);
-
-const isSignedInProfile =
-  currentProfile.cloudProfileId ===
-      signedInCloudProfileId;
-
 if (isSignedInProfile) {
   try {
     await syncFoodToCloud(newFood);
@@ -1178,11 +1155,6 @@ closeModal();
   if (!foodToDelete) {
     return;
   }
-
-  const isSignedInProfile =
-    currentProfile.cloudProfileId ===
-      signedInCloudProfileId;
-
   if (isSignedInProfile) {
     try {
       await deleteFoodFromCloud(id);
@@ -1273,7 +1245,7 @@ closeModal();
             onPress={() => changeDate(-1)}
           >
             <Text style={styles.dateArrow}>
-              �
+              ‹
             </Text>
           </Pressable>
 
@@ -1309,7 +1281,7 @@ closeModal();
                   styles.dateArrowTextDisabled,
               ]}
             >
-              �
+              ›
             </Text>
           </Pressable>
         </View>
@@ -1336,7 +1308,7 @@ closeModal();
 
         <View style={styles.calorieCard}>
           <Text style={styles.summaryLabel}>
-            {currentProfile.name.toUpperCase()} � CALORIES LOGGED
+            {currentProfile.name.toUpperCase()} • CALORIES LOGGED
           </Text>
 
           <Text style={styles.calorieValue}>
@@ -1424,9 +1396,9 @@ closeModal();
                       </Text>
 
                       <Text style={styles.foodDetails}>
-                        {food.calories} cal �{' '}
-                        {food.protein}g protein �{' '}
-                        {food.carbs}g carbs �{' '}
+                        {food.calories} cal •{' '}
+                        {food.protein}g protein •{' '}
+                        {food.carbs}g carbs •{' '}
                         {food.fat}g fat
                       </Text>
 
@@ -1451,7 +1423,7 @@ closeModal();
                         hitSlop={8}
                       >
                         <Text style={styles.favoriteText}>
-                          {isFavorite(food) ? '? Favorite' : '? Favorite'}
+                          {isFavorite(food) ? '★ Favorite' : '☆ Favorite'}
                         </Text>
                       </Pressable>
 
@@ -1675,13 +1647,13 @@ closeModal();
                         )}
 
                         <Text style={styles.resultNutrition}>
-                          Per 100 g: {result.calories} cal �{' '}
-                          {result.protein}g protein �{' '}
-                          {result.carbs}g carbs � {result.fat}g fat
+                          Per 100 g: {result.calories} cal •{' '}
+                          {result.protein}g protein •{' '}
+                          {result.carbs}g carbs • {result.fat}g fat
                         </Text>
                       </View>
 
-                      <Text style={styles.selectArrow}>�</Text>
+                      <Text style={styles.selectArrow}>•</Text>
                     </Pressable>
                   ))}
                 </>
@@ -1842,8 +1814,8 @@ function ReusableFoodSection({
             </Text>
 
             <Text style={styles.resultNutrition}>
-              {food.calories} cal � {food.protein}g protein �{' '}
-              {food.carbs}g carbs � {food.fat}g fat
+              {food.calories} cal • {food.protein}g protein •{' '}
+              {food.carbs}g carbs • {food.fat}g fat
             </Text>
 
             <View style={styles.reusableActions}>
@@ -2001,8 +1973,8 @@ function SelectedFoodCard({
           </Text>
 
           <Text style={styles.previewMacros}>
-            {nutrition.protein}g protein �{' '}
-            {nutrition.carbs}g carbs �{' '}
+            {nutrition.protein}g protein •{' '}
+            {nutrition.carbs}g carbs •{' '}
             {nutrition.fat}g fat
           </Text>
 
@@ -3056,8 +3028,5 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
-
-
-
 
 

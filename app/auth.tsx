@@ -27,51 +27,7 @@ export default function AuthScreen() {
   const [loading, setLoading] =
     useState(false);
 
- async function bootstrapHousehold() {
-  try {
-    const { data, error } =
-      await supabase.rpc(
-        'create_household_and_profile',
-        {
-          household_name: 'Parker Household',
-          profile_name: 'Zach',
-          calorie_goal: 2005,
-          protein_goal: 150,
-          water_goal: 96,
-        }
-      );
-
-    if (error) {
-      console.error(
-        'Household bootstrap error:',
-        error
-      );
-
-      Alert.alert(
-        'Setup Error',
-        error.message
-      );
-
-      return;
-    }
-
-    console.log(
-      'HOUSEHOLD BOOTSTRAP SUCCESS:',
-      data
-    );
-
-    Alert.alert(
-      'Setup Complete',
-      'Parker Household and Zach cloud profile were created.'
-    );
-  } catch (error) {
-    console.error(
-      'Household bootstrap failed:',
-      error
-    );
-  }
-}
-    async function signIn() {
+  async function signIn() {
     const cleanEmail =
       email.trim().toLowerCase();
 
@@ -100,52 +56,54 @@ export default function AuthScreen() {
         return;
       }
 
-      const { data: invitationData, error: invitationError } =
-  await supabase.rpc(
-    'get_my_pending_household_invitation'
-  );
+      const {
+        data: invitationData,
+        error: invitationError,
+      } = await supabase.rpc(
+        'get_my_pending_household_invitation'
+      );
 
-if (invitationError) {
-  console.error(
-    'Invitation check error:',
-    invitationError
-  );
+      if (invitationError) {
+        console.error(
+          'Invitation check error:',
+          invitationError
+        );
 
-  Alert.alert(
-    'Sign In Error',
-    'Signed in successfully, but Parker Fitness could not check your household status.'
-  );
+        Alert.alert(
+          'Sign In Error',
+          'Signed in successfully, but Parker Fitness could not check your household status.'
+        );
 
-  return;
-}
+        return;
+      }
 
-if (invitationData?.length) {
-  router.replace('/join-household');
-  return;
-}
+      if (invitationData?.length) {
+        router.replace('/join-household');
+        return;
+      }
 
-try {
-await Promise.all([
+      try {
+        await Promise.all([
     restoreFoodsFromCloud(),
     restoreWaterFromCloud(),
     restoreWeightsFromCloud(),
     restoreWorkoutsFromCloud(),
-  ]);
+        ]);
 
-  console.log(
-    'Initial cloud restore completed successfully.'
-  );
-} catch (syncError) {
-  console.error(
-    'Initial cloud restore failed:',
-    syncError
-  );
+        console.log(
+          'Initial cloud restore completed successfully.'
+        );
+      } catch (syncError) {
+        console.error(
+          'Initial cloud restore failed:',
+          syncError
+        );
 
-  // Do not block sign-in if cloud restoration
-  // temporarily fails. Existing local data remains.
-}
+        // Do not block sign-in if cloud restoration
+        // temporarily fails. Existing local data remains.
+      }
 
-router.replace('/(tabs)');
+      router.replace('/(tabs)');
     } catch (error) {
       console.error(
         'Sign in error:',
@@ -206,57 +164,59 @@ router.replace('/(tabs)');
         return;
       }
 
-     const { data: invitationData, error: invitationError } =
-  await supabase.rpc(
-    'get_my_pending_household_invitation'
-  );
+      const {
+        data: invitationData,
+        error: invitationError,
+      } = await supabase.rpc(
+        'get_my_pending_household_invitation'
+      );
 
-if (invitationError) {
-  console.error(
-    'Invitation check error:',
-    invitationError
-  );
+      if (invitationError) {
+        console.error(
+          'Invitation check error:',
+          invitationError
+        );
 
-  Alert.alert(
-    'Account Created',
-    'Your account was created, but Parker Fitness could not check your household invitation.'
-  );
+        Alert.alert(
+          'Account Created',
+          'Your account was created, but Parker Fitness could not check your household invitation.'
+        );
 
-  return;
-}
+        return;
+      }
 
-if (invitationData?.length) {
-  router.replace('/join-household');
-  return;
-}
+      if (invitationData?.length) {
+        router.replace('/join-household');
+        return;
+      }
 
-Alert.alert(
-  'Account Created',
-  'Your Parker Fitness account is ready.'
-);
+      Alert.alert(
+        'Account Created',
+        'Your Parker Fitness account is ready.'
+      );
 
-try {
-  await Promise.all([
+      try {
+        await Promise.all([
     restoreFoodsFromCloud(),
     restoreWaterFromCloud(),
     restoreWeightsFromCloud(),
     restoreWorkoutsFromCloud(),
-  ]);
+        ]);
 
-  console.log(
-    'Initial cloud restore completed successfully.'
-  );
-} catch (syncError) {
-  console.error(
-    'Initial cloud restore failed:',
-    syncError
-  );
+        console.log(
+          'Initial cloud restore completed successfully.'
+        );
+      } catch (syncError) {
+        console.error(
+          'Initial cloud restore failed:',
+          syncError
+        );
 
-  // Do not block sign-in if cloud restoration
-  // temporarily fails. Existing local data remains.
-}
+        // Do not block sign-in if cloud restoration
+        // temporarily fails. Existing local data remains.
+      }
 
-router.replace('/(tabs)');
+      router.replace('/(tabs)');
     } catch (error) {
       console.error(
         'Create account error:',
@@ -359,20 +319,6 @@ router.replace('/(tabs)');
               Create Account
             </Text>
           </Pressable>
-
-        <Pressable
-  style={styles.secondaryButton}
-  onPress={bootstrapHousehold}
-  disabled={loading}
->
-  <Text style={styles.secondaryButtonText}>
-    Create Parker Household
-  </Text>
-</Pressable>
-
-<Text style={styles.testNote}>
-  Phase 2A account testing
-</Text>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -469,13 +415,6 @@ const styles = StyleSheet.create({
 
   disabledButton: {
     opacity: 0.6,
-  },
-
-  testNote: {
-    color: '#71717a',
-    fontSize: 12,
-    textAlign: 'center',
-    marginTop: 24,
   },
 });
 

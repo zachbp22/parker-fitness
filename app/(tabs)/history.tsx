@@ -55,8 +55,8 @@ const MEALS = [
 export default function HistoryScreen() {
   const [activeProfile, setActiveProfile] =
     useState<ProfileId>('zach');
-    const [profiles, setProfiles] =
-  useState<Profile[]>([]);
+  const [profiles, setProfiles] =
+    useState<Profile[]>([]);
 
   const [activeTab, setActiveTab] =
     useState<HistoryTab>('nutrition');
@@ -277,8 +277,7 @@ function handleDeleteWeight(entry: StoredWeight) {
   const profileFoods = useMemo(() => {
     return foods.filter(
       (food) =>
-        (food.profileId ?? 'zach') ===
-        activeProfile
+        food.profileId === activeProfile
     );
   }, [foods, activeProfile]);
 
