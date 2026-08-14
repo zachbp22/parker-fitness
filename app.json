@@ -8,8 +8,9 @@
     "scheme": "parkerfitness",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
-    },
+  "supportsTablet": true,
+  "bundleIdentifier": "com.zachbp22.parkerfitness"
+},
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
@@ -42,6 +43,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "60211b31-5456-4378-8e41-7945afcebf2f"
+      }
     }
   }
 }
