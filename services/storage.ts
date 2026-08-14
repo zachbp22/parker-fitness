@@ -178,23 +178,37 @@ export async function loadProfiles(): Promise<Profile[]> {
     Array.isArray(parsedProfiles) &&
     parsedProfiles.length > 0
   ) {
-    const migratedProfiles =
-      parsedProfiles.map((profile) =>
-        profile.id === 'wife' &&
-        profile.name === 'Wife'
-          ? {
-              ...profile,
-              name: 'Jodi',
-            }
-          : profile
-      );
+const migratedProfiles =
+  parsedProfiles.map((profile) => {
+    const canonicalProfile =
+      PROFILES[profile.id];
 
-    const needsMigration =
-      migratedProfiles.some(
-        (profile, index) =>
-          profile.name !==
-          parsedProfiles[index].name
-      );
+    const migratedProfile = {
+      ...canonicalProfile,
+      ...profile,
+      cloudProfileId:
+        canonicalProfile?.cloudProfileId ??
+        profile.cloudProfileId,
+    };
+
+    if (
+      migratedProfile.id === 'wife' &&
+      migratedProfile.name === 'Wife'
+    ) {
+      migratedProfile.name = 'Jodi';
+    }
+
+    return migratedProfile;
+  });
+
+const needsMigration =
+  migratedProfiles.some(
+    (profile, index) =>
+      profile.name !==
+        parsedProfiles[index].name ||
+      profile.cloudProfileId !==
+        parsedProfiles[index].cloudProfileId
+  );
 
     if (needsMigration) {
       await saveProfiles(
