@@ -49,6 +49,21 @@ export default function TabLayout() {
         }}
       />
 
+
+      <Tabs.Screen
+        name="meal-plan"
+        options={{
+          title: 'Plan',
+          tabBarIcon: ({ color }) => (
+            <IconSymbol
+              size={28}
+              name="calendar"
+              color={color}
+            />
+          ),
+        }}
+      />
+
       <Tabs.Screen
         name="history"
         options={{

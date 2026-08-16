@@ -17,6 +17,8 @@ import {
 
 import {
   FoodSearchResult,
+  FoodServingOption,
+  getFoodDetails,
   searchFoods,
 } from '@/services/foodApi';
 
@@ -45,12 +47,13 @@ type MealType =
   | 'Dinner'
   | 'Snacks';
 
-type ServingChoice = 'g' | 'oz' | 'serving';
+type ServingChoice = 'g' | 'oz' | 'cup' | 'unit' | 'serving';
 
 type EntryMode =
   | 'recent'
   | 'favorites'
   | 'search'
+  | 'voice'
   | 'manual';
 
 type FoodItem = {
@@ -67,6 +70,15 @@ type FoodItem = {
   profileId?: ProfileId;
   source?: 'manual' | 'usda' | 'barcode';
   usdaFoodId?: string;
+};
+
+type NutritionBasis = {
+  servingSize: number;
+  servingUnit: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
 };
 
 const mealTypes: MealType[] = [
@@ -186,6 +198,18 @@ const [selectedDate, setSelectedDate] = useState(
 
   const [searchError, setSearchError] = useState('');
 
+  /*
+   * Voice logging test state.
+   *
+   * This first test version lets us validate the voice-command parser and
+   * USDA matching flow inside Expo Go without adding a native speech
+   * recognition dependency yet. Type exactly what you would say aloud,
+   * then tap Parse Voice Command.
+   */
+  const [voiceTranscript, setVoiceTranscript] = useState('');
+  const [voiceParsedFoods, setVoiceParsedFoods] = useState<string[]>([]);
+  const [voiceStatus, setVoiceStatus] = useState('');
+
   const [selectedSearchFood, setSelectedSearchFood] =
     useState<FoodSearchResult | null>(null);
 
@@ -194,6 +218,8 @@ const [selectedDate, setSelectedDate] = useState(
 
   const [selectedServingChoice, setSelectedServingChoice] =
     useState<ServingChoice>('g');
+  const [selectedHouseholdServing, setSelectedHouseholdServing] =
+    useState<FoodServingOption | null>(null);
 
   /*
    * Manual food form state
@@ -206,6 +232,10 @@ const [selectedDate, setSelectedDate] = useState(
   const [carbs, setCarbs] = useState('');
   const [fat, setFat] = useState('');
   const [manualSource, setManualSource] = useState<'manual' | 'usda' | 'barcode'>('manual');
+  const [autoNutritionBasis, setAutoNutritionBasis] =
+    useState<NutritionBasis | null>(null);
+  const [autoServingChoice, setAutoServingChoice] =
+    useState<'cup' | 'g' | 'oz' | 'unit'>('g');
 
   useEffect(() => {
     async function restoreData() {
@@ -320,6 +350,33 @@ if (savedFoods !== null) {
     setCarbs(routeParams.scannedCarbs ?? '0');
     setFat(routeParams.scannedFat ?? '0');
     setManualSource('barcode');
+
+    const scannedBaseServingSize = Number(
+      routeParams.scannedServingSize ?? '100'
+    );
+
+    if (
+      Number.isFinite(scannedBaseServingSize) &&
+      scannedBaseServingSize > 0
+    ) {
+      setAutoNutritionBasis({
+        servingSize: scannedBaseServingSize,
+        servingUnit:
+          routeParams.scannedServingUnit ?? 'g',
+        calories: Number(routeParams.scannedCalories ?? '0'),
+        protein: Number(routeParams.scannedProtein ?? '0'),
+        carbs: Number(routeParams.scannedCarbs ?? '0'),
+        fat: Number(routeParams.scannedFat ?? '0'),
+      });
+      setAutoServingChoice(
+        normalizeAutoServingChoice(
+          routeParams.scannedServingUnit ?? 'g'
+        )
+      );
+    } else {
+      setAutoNutritionBasis(null);
+    }
+
     setEntryMode('manual');
     setModalVisible(true);
 
@@ -429,7 +486,8 @@ if (savedFoods !== null) {
     const grams = convertAmountToGrams(
       amount,
       selectedServingChoice,
-      selectedSearchFood
+      selectedSearchFood,
+      selectedHouseholdServing
     );
 
     const multiplier = grams / 100;
@@ -453,6 +511,53 @@ if (savedFoods !== null) {
     selectedSearchFood,
     selectedAmount,
     selectedServingChoice,
+    selectedHouseholdServing,
+  ]);
+
+  const automaticNutrition = useMemo(() => {
+    if (!autoNutritionBasis) {
+      return null;
+    }
+
+    const amount = Number(servingSize);
+
+    if (
+      !Number.isFinite(amount) ||
+      amount <= 0 ||
+      !Number.isFinite(autoNutritionBasis.servingSize) ||
+      autoNutritionBasis.servingSize <= 0
+    ) {
+      return null;
+    }
+
+    const multiplier = getAutomaticServingMultiplier(
+      amount,
+      autoServingChoice,
+      autoNutritionBasis
+    );
+
+    if (multiplier === null) {
+      return null;
+    }
+
+    return {
+      calories: Math.round(
+        autoNutritionBasis.calories * multiplier
+      ),
+      protein: roundMacro(
+        autoNutritionBasis.protein * multiplier
+      ),
+      carbs: roundMacro(
+        autoNutritionBasis.carbs * multiplier
+      ),
+      fat: roundMacro(
+        autoNutritionBasis.fat * multiplier
+      ),
+    };
+  }, [
+    autoNutritionBasis,
+    servingSize,
+    autoServingChoice,
   ]);
 
   function resetManualForm() {
@@ -464,6 +569,8 @@ if (savedFoods !== null) {
     setCarbs('');
     setFat('');
     setManualSource('manual');
+    setAutoNutritionBasis(null);
+    setAutoServingChoice('g');
   }
 
   function resetSearchForm() {
@@ -473,7 +580,14 @@ if (savedFoods !== null) {
     setSelectedSearchFood(null);
     setSelectedAmount('100');
     setSelectedServingChoice('g');
+    setSelectedHouseholdServing(null);
     setIsSearching(false);
+  }
+
+  function resetVoiceForm() {
+    setVoiceTranscript('');
+    setVoiceParsedFoods([]);
+    setVoiceStatus('');
   }
 
   function resetModal() {
@@ -481,6 +595,7 @@ if (savedFoods !== null) {
     setEntryMode('recent');
     resetManualForm();
     resetSearchForm();
+    resetVoiceForm();
   }
 
   async function changeProfile(
@@ -524,6 +639,28 @@ if (savedFoods !== null) {
     setProtein(food.protein.toString());
     setCarbs(food.carbs.toString());
     setFat(food.fat.toString());
+    setManualSource(food.source ?? 'manual');
+
+    const baseServingSize = Number(food.servingSize);
+
+    if (
+      (food.source === 'usda' ||
+        food.source === 'barcode') &&
+      Number.isFinite(baseServingSize) &&
+      baseServingSize > 0
+    ) {
+      setAutoNutritionBasis({
+        servingSize: baseServingSize,
+        servingUnit: food.servingUnit,
+        calories: food.calories,
+        protein: food.protein,
+        carbs: food.carbs,
+        fat: food.fat,
+      });
+      setAutoServingChoice(
+        normalizeAutoServingChoice(food.servingUnit)
+      );
+    }
 
     setModalVisible(true);
   }
@@ -701,6 +838,81 @@ Alert.alert(
     });
   }
 
+  function parseVoiceCommand() {
+    const transcript = voiceTranscript.trim();
+
+    if (!transcript) {
+      Alert.alert(
+        'Say or enter a meal',
+        'Enter what you would say, such as "two eggs and a banana for breakfast."'
+      );
+      return;
+    }
+
+    const parsed = parseVoiceFoodText(transcript);
+
+    if (parsed.meal) {
+      setSelectedMeal(parsed.meal);
+    }
+
+    setVoiceParsedFoods(parsed.foods);
+
+    if (parsed.foods.length === 0) {
+      setVoiceStatus(
+        'I could not find any foods in that command. Try separating foods with "and" or commas.'
+      );
+      return;
+    }
+
+    setVoiceStatus(
+      `Found ${parsed.foods.length} item${parsed.foods.length === 1 ? '' : 's'}. Tap a food to search USDA and choose the exact match.`
+    );
+  }
+
+  function searchVoiceFood(foodText: string) {
+    setSearchQuery(foodText);
+    setSearchResults([]);
+    setSearchError('');
+    setSelectedSearchFood(null);
+    setEntryMode('search');
+
+    // Run on the next tick so searchQuery has updated first.
+    setTimeout(async () => {
+      setIsSearching(true);
+
+      try {
+        const results = await searchFoods(foodText);
+        const sortedResults = [...results].sort((a, b) => {
+          const aIsGeneric = !a.brand;
+          const bIsGeneric = !b.brand;
+
+          if (aIsGeneric && !bIsGeneric) return -1;
+          if (!aIsGeneric && bIsGeneric) return 1;
+
+          return a.name.localeCompare(b.name);
+        });
+
+        setSearchResults(sortedResults);
+
+        if (sortedResults.length === 0) {
+          setSearchError(
+            `No USDA foods were found for "${foodText}". Try another search or use manual entry.`
+          );
+        }
+      } catch (error) {
+        console.error('Voice USDA search error:', error);
+        setSearchResults([]);
+        setSearchError(
+          error instanceof Error
+            ? error.message
+            : 'Unable to search USDA foods.'
+        );
+      } finally {
+        setIsSearching(false);
+      }
+    }, 0);
+  }
+
   async function runFoodSearch() {
     const trimmedQuery = searchQuery.trim();
 
@@ -762,30 +974,70 @@ Alert.alert(
     }
   }
 
-  function chooseSearchFood(
+  async function chooseSearchFood(
     food: FoodSearchResult
   ) {
-    setSelectedSearchFood(food);
+    setIsSearching(true);
+    setSearchError('');
 
-    const originalServingSize =
-      Number(food.servingSize);
+    try {
+      const detailedFood =
+        await getFoodDetails(food.id);
 
-    const originalServingUnit =
-      food.servingUnit.toLowerCase();
+      setSelectedSearchFood(detailedFood);
+      setSelectedHouseholdServing(null);
 
-    if (
-      Number.isFinite(originalServingSize) &&
-      originalServingSize > 0 &&
-      isGramUnit(originalServingUnit)
-    ) {
-      setSelectedAmount(
-        formatNumber(originalServingSize)
+      const originalServingSize =
+        Number(detailedFood.servingSize);
+
+      const originalServingUnit =
+        detailedFood.servingUnit.toLowerCase();
+
+      if (
+        Number.isFinite(originalServingSize) &&
+        originalServingSize > 0 &&
+        isGramUnit(originalServingUnit)
+      ) {
+        setSelectedAmount(
+          formatNumber(originalServingSize)
+        );
+        setSelectedServingChoice('g');
+      } else {
+        setSelectedAmount('1');
+
+        const preferred =
+          getPreferredHouseholdServing(
+            detailedFood.servingOptions ?? []
+          );
+
+        if (preferred) {
+          setSelectedHouseholdServing(preferred);
+
+          const preferredType =
+            getHouseholdChoiceType(preferred);
+
+          setSelectedServingChoice(preferredType);
+        } else {
+          setSelectedAmount('100');
+          setSelectedServingChoice('g');
+        }
+      }
+    } catch (error) {
+      console.error(
+        'Unable to load USDA food details:',
+        error
       );
 
-      setSelectedServingChoice('g');
-    } else {
+      /*
+       * Fall back to the search result so food logging still works
+       * even if the detail endpoint is temporarily unavailable.
+       */
+      setSelectedSearchFood(food);
+      setSelectedHouseholdServing(null);
       setSelectedAmount('100');
       setSelectedServingChoice('g');
+    } finally {
+      setIsSearching(false);
     }
   }
 
@@ -799,15 +1051,29 @@ Alert.alert(
     }
 
     if (choice === 'g') {
+      setSelectedHouseholdServing(null);
       setSelectedAmount('100');
       return;
     }
 
     if (choice === 'oz') {
+      setSelectedHouseholdServing(null);
       setSelectedAmount('4');
       return;
     }
 
+    const option = findServingOptionForChoice(
+      selectedSearchFood.servingOptions ?? [],
+      choice
+    );
+
+    if (option) {
+      setSelectedHouseholdServing(option);
+      setSelectedAmount('1');
+      return;
+    }
+
+    setSelectedHouseholdServing(null);
     setSelectedAmount('1');
   }
 
@@ -826,11 +1092,13 @@ Alert.alert(
     const amount = Number(selectedAmount);
 
     const displayedUnit =
-      selectedServingChoice === 'serving'
-        ? getOriginalServingLabel(
-            selectedSearchFood
-          )
-        : selectedServingChoice;
+      selectedHouseholdServing
+        ? selectedHouseholdServing.label
+        : selectedServingChoice === 'serving'
+          ? getOriginalServingLabel(
+              selectedSearchFood
+            )
+          : selectedServingChoice;
 
     const foodData: FoodItem = {
       id: createId(),
@@ -877,6 +1145,86 @@ if (isSignedInProfile) {
 }
 
 closeModal();
+  }
+
+async function saveAutomaticFood() {
+    if (!autoNutritionBasis || !automaticNutrition) {
+      Alert.alert(
+        'Invalid serving',
+        'Enter a valid amount greater than zero.'
+      );
+      return;
+    }
+
+    const amount = Number(servingSize);
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      Alert.alert(
+        'Invalid serving',
+        'Enter a valid amount greater than zero.'
+      );
+      return;
+    }
+
+    const existingFood = editingFoodId
+      ? foods.find((food) => food.id === editingFoodId)
+      : undefined;
+
+    const foodData: FoodItem = {
+      id: editingFoodId ?? createId(),
+      name: foodName.trim(),
+      servingSize: formatNumber(amount),
+      servingUnit: getAutoServingLabel(autoServingChoice),
+      calories: automaticNutrition.calories,
+      protein: automaticNutrition.protein,
+      carbs: automaticNutrition.carbs,
+      fat: automaticNutrition.fat,
+      meal: selectedMeal,
+      date: existingFood?.date ?? selectedDate,
+      profileId:
+        existingFood?.profileId ?? activeProfile,
+      source:
+        existingFood?.source ??
+        (manualSource === 'manual'
+          ? undefined
+          : manualSource),
+      usdaFoodId: existingFood?.usdaFoodId,
+    };
+
+    if (editingFoodId) {
+      setFoods((currentFoods) =>
+        currentFoods.map((food) =>
+          food.id === editingFoodId
+            ? foodData
+            : food
+        )
+      );
+    } else {
+      setFoods((currentFoods) => [
+        ...currentFoods,
+        foodData,
+      ]);
+    }
+
+    if (isSignedInProfile) {
+      try {
+        await syncFoodToCloud(foodData);
+      } catch (cloudError) {
+        console.error(
+          'Unable to sync food to cloud:',
+          cloudError
+        );
+
+        Alert.alert(
+          'Food Cloud Sync Error',
+          cloudError instanceof Error
+            ? cloudError.message
+            : JSON.stringify(cloudError)
+        );
+      }
+    }
+
+    closeModal();
   }
 
 async function saveManualFood() {
@@ -1079,6 +1427,29 @@ closeModal();
     setProtein(food.protein.toString());
     setCarbs(food.carbs.toString());
     setFat(food.fat.toString());
+    setManualSource(food.source ?? 'manual');
+
+    const baseServingSize = Number(food.servingSize);
+
+    if (
+      (food.source === 'usda' ||
+        food.source === 'barcode') &&
+      Number.isFinite(baseServingSize) &&
+      baseServingSize > 0
+    ) {
+      setAutoNutritionBasis({
+        servingSize: baseServingSize,
+        servingUnit: food.servingUnit,
+        calories: food.calories,
+        protein: food.protein,
+        carbs: food.carbs,
+        fat: food.fat,
+      });
+      setAutoServingChoice(
+        normalizeAutoServingChoice(food.servingUnit)
+      );
+    }
+
     setEntryMode('manual');
   }
 
@@ -1485,6 +1856,8 @@ closeModal();
           style={styles.modalScreen}
           contentContainerStyle={styles.modalContent}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          automaticallyAdjustKeyboardInsets
         >
           <Text style={styles.modalTitle}>
             {editingFoodId
@@ -1525,6 +1898,12 @@ closeModal();
               />
 
               <EntryModeButton
+                label="Voice Log"
+                active={entryMode === 'voice'}
+                onPress={() => setEntryMode('voice')}
+              />
+
+              <EntryModeButton
                 label="Manual Entry"
                 active={entryMode === 'manual'}
                 onPress={() => setEntryMode('manual')}
@@ -1562,6 +1941,64 @@ closeModal();
               onAdjust={adjustReusableFood}
               onRemoveFavorite={removeFavorite}
             />
+          )}
+
+          {!editingFoodId && entryMode === 'voice' && (
+            <View style={styles.voiceSection}>
+              <Text style={styles.resultHeading}>
+                Voice Food Logging
+              </Text>
+
+              <Text style={styles.voiceHelpText}>
+                Expo Go test mode: type exactly what you would say aloud.
+                This lets us test food parsing and USDA matching before
+                connecting the microphone/transcription layer.
+              </Text>
+
+              <TextInput
+                style={styles.voiceInput}
+                value={voiceTranscript}
+                onChangeText={setVoiceTranscript}
+                placeholder='Example: "two eggs and a banana for breakfast"'
+                placeholderTextColor="#9AA39E"
+                multiline
+                textAlignVertical="top"
+              />
+
+              <Pressable
+                style={styles.voiceParseButton}
+                onPress={parseVoiceCommand}
+              >
+                <Text style={styles.voiceParseButtonText}>
+                  Parse Voice Command
+                </Text>
+              </Pressable>
+
+              {voiceStatus ? (
+                <Text style={styles.voiceStatus}>
+                  {voiceStatus}
+                </Text>
+              ) : null}
+
+              {voiceParsedFoods.map((food, index) => (
+                <Pressable
+                  key={`${food}-${index}`}
+                  style={styles.voiceFoodCard}
+                  onPress={() => searchVoiceFood(food)}
+                >
+                  <View style={styles.voiceFoodInfo}>
+                    <Text style={styles.voiceFoodName}>
+                      {food}
+                    </Text>
+                    <Text style={styles.voiceFoodHint}>
+                      Tap to match with USDA
+                    </Text>
+                  </View>
+
+                  <Text style={styles.voiceFoodArrow}>›</Text>
+                </Pressable>
+              ))}
+            </View>
           )}
 
           {entryMode === 'search' && !editingFoodId && (
@@ -1612,6 +2049,7 @@ closeModal();
                   onChangeAmount={setSelectedAmount}
                   servingChoice={selectedServingChoice}
                   onChangeServingChoice={changeServingChoice}
+                  householdServing={selectedHouseholdServing}
                   nutrition={selectedNutrition}
                   onClear={() => setSelectedSearchFood(null)}
                   onSave={saveSearchedFood}
@@ -1662,72 +2100,184 @@ closeModal();
           )}
 
           {(entryMode === 'manual' || editingFoodId) && (
-            <>
-              <FormInput
-                label="Food name"
-                value={foodName}
-                onChangeText={setFoodName}
-                placeholder="Example: Greek yogurt"
-              />
-
-              <FormInput
-                label="Serving size"
-                value={servingSize}
-                onChangeText={setServingSize}
-                placeholder="Example: 1"
-                keyboardType="decimal-pad"
-              />
-
-              <FormInput
-                label="Serving unit"
-                value={servingUnit}
-                onChangeText={setServingUnit}
-                placeholder="Example: cup, oz, bottle"
-              />
-
-              <FormInput
-                label="Calories"
-                value={calories}
-                onChangeText={setCalories}
-                placeholder="Example: 150"
-                keyboardType="decimal-pad"
-              />
-
-              <FormInput
-                label="Protein (g)"
-                value={protein}
-                onChangeText={setProtein}
-                placeholder="Example: 20"
-                keyboardType="decimal-pad"
-              />
-
-              <FormInput
-                label="Carbs (g)"
-                value={carbs}
-                onChangeText={setCarbs}
-                placeholder="Example: 12"
-                keyboardType="decimal-pad"
-              />
-
-              <FormInput
-                label="Fat (g)"
-                value={fat}
-                onChangeText={setFat}
-                placeholder="Example: 4"
-                keyboardType="decimal-pad"
-              />
-
-              <Pressable
-                style={styles.saveButton}
-                onPress={saveManualFood}
-              >
-                <Text style={styles.saveButtonText}>
-                  {editingFoodId
-                    ? 'Save Changes'
-                    : `Save Food for ${currentProfile.name}`}
+            autoNutritionBasis ? (
+              <View style={styles.autoFoodSection}>
+                <Text style={styles.inputLabel}>
+                  Food
                 </Text>
-              </Pressable>
-            </>
+
+                <View style={styles.readOnlyFoodCard}>
+                  <Text style={styles.readOnlyFoodName}>
+                    {foodName}
+                  </Text>
+
+                  <Text style={styles.readOnlyFoodSource}>
+                    {manualSource === 'barcode'
+                      ? 'Barcode food'
+                      : 'USDA food'}
+                  </Text>
+                </View>
+
+                <Text style={styles.inputLabel}>
+                  How much did you have?
+                </Text>
+
+                <TextInput
+                  style={styles.amountInputFull}
+                  value={servingSize}
+                  onChangeText={setServingSize}
+                  placeholder="Amount"
+                  placeholderTextColor="#9AA39E"
+                  keyboardType="decimal-pad"
+                />
+
+                <View style={styles.autoUnitSelector}>
+                  <AutoUnitButton
+                    label="Cups"
+                    active={autoServingChoice === 'cup'}
+                    onPress={() => setAutoServingChoice('cup')}
+                  />
+
+                  <AutoUnitButton
+                    label="Grams"
+                    active={autoServingChoice === 'g'}
+                    onPress={() => setAutoServingChoice('g')}
+                  />
+
+                  <AutoUnitButton
+                    label="Ounces"
+                    active={autoServingChoice === 'oz'}
+                    onPress={() => setAutoServingChoice('oz')}
+                  />
+
+                  <AutoUnitButton
+                    label="1 Unit"
+                    active={autoServingChoice === 'unit'}
+                    onPress={() => setAutoServingChoice('unit')}
+                  />
+                </View>
+
+                <Text style={styles.autoHelpText}>
+                  Nutrition updates automatically based on the amount and unit.
+                </Text>
+
+                {!canConvertAutomaticServing(
+                  autoServingChoice,
+                  autoNutritionBasis
+                ) ? (
+                  <View style={styles.conversionWarning}>
+                    <Text style={styles.conversionWarningText}>
+                      This food does not include enough serving-weight data to convert safely to this unit. Choose the original unit, grams, or ounces when available.
+                    </Text>
+                  </View>
+                ) : null}
+
+                {automaticNutrition ? (
+                  <View style={styles.nutritionPreview}>
+                    <Text style={styles.previewLabel}>
+                      NUTRITION FOR THIS AMOUNT
+                    </Text>
+
+                    <Text style={styles.previewCalories}>
+                      {automaticNutrition.calories} calories
+                    </Text>
+
+                    <Text style={styles.previewMacros}>
+                      {automaticNutrition.protein}g protein •{' '}
+                      {automaticNutrition.carbs}g carbs •{' '}
+                      {automaticNutrition.fat}g fat
+                    </Text>
+                  </View>
+                ) : (
+                  <Text style={styles.invalidAmountText}>
+                    Enter a valid amount greater than zero.
+                  </Text>
+                )}
+
+                <Pressable
+                  style={[
+                    styles.saveButton,
+                    !automaticNutrition &&
+                      styles.saveButtonDisabled,
+                  ]}
+                  onPress={saveAutomaticFood}
+                  disabled={!automaticNutrition}
+                >
+                  <Text style={styles.saveButtonText}>
+                    {editingFoodId
+                      ? 'Save Changes'
+                      : `Add Food for ${currentProfile.name}`}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : (
+              <>
+                <FormInput
+                  label="Food name"
+                  value={foodName}
+                  onChangeText={setFoodName}
+                  placeholder="Example: Greek yogurt"
+                />
+
+                <FormInput
+                  label="Serving size"
+                  value={servingSize}
+                  onChangeText={setServingSize}
+                  placeholder="Example: 1"
+                  keyboardType="decimal-pad"
+                />
+
+                <FormInput
+                  label="Serving unit"
+                  value={servingUnit}
+                  onChangeText={setServingUnit}
+                  placeholder="Example: cup, oz, bottle"
+                />
+
+                <FormInput
+                  label="Calories"
+                  value={calories}
+                  onChangeText={setCalories}
+                  placeholder="Example: 150"
+                  keyboardType="decimal-pad"
+                />
+
+                <FormInput
+                  label="Protein (g)"
+                  value={protein}
+                  onChangeText={setProtein}
+                  placeholder="Example: 20"
+                  keyboardType="decimal-pad"
+                />
+
+                <FormInput
+                  label="Carbs (g)"
+                  value={carbs}
+                  onChangeText={setCarbs}
+                  placeholder="Example: 12"
+                  keyboardType="decimal-pad"
+                />
+
+                <FormInput
+                  label="Fat (g)"
+                  value={fat}
+                  onChangeText={setFat}
+                  placeholder="Example: 4"
+                  keyboardType="decimal-pad"
+                />
+
+                <Pressable
+                  style={styles.saveButton}
+                  onPress={saveManualFood}
+                >
+                  <Text style={styles.saveButtonText}>
+                    {editingFoodId
+                      ? 'Save Changes'
+                      : `Save Food for ${currentProfile.name}`}
+                  </Text>
+                </Pressable>
+              </>
+            )
           )}
 
           <Pressable
@@ -1863,6 +2413,7 @@ type SelectedFoodCardProps = {
   onChangeServingChoice: (
     value: ServingChoice
   ) => void;
+  householdServing: FoodServingOption | null;
   nutrition: {
     grams: number;
     calories: number;
@@ -1881,6 +2432,7 @@ function SelectedFoodCard({
   onChangeAmount,
   servingChoice,
   onChangeServingChoice,
+  householdServing,
   nutrition,
   onClear,
   onSave,
@@ -1929,6 +2481,19 @@ function SelectedFoodCard({
       />
 
       <View style={styles.servingChoiceRow}>
+        {findServingOptionForChoice(
+          food.servingOptions ?? [],
+          'cup'
+        ) ? (
+          <ServingChoiceButton
+            label="Cups"
+            active={servingChoice === 'cup'}
+            onPress={() =>
+              onChangeServingChoice('cup')
+            }
+          />
+        ) : null}
+
         <ServingChoiceButton
           label="Grams"
           active={servingChoice === 'g'}
@@ -1945,22 +2510,26 @@ function SelectedFoodCard({
           }
         />
 
-        <ServingChoiceButton
-          label="Servings"
-          active={servingChoice === 'serving'}
-          onPress={() =>
-            onChangeServingChoice('serving')
-          }
-        />
+        {findServingOptionForChoice(
+          food.servingOptions ?? [],
+          'unit'
+        ) ? (
+          <ServingChoiceButton
+            label="1 Unit"
+            active={servingChoice === 'unit'}
+            onPress={() =>
+              onChangeServingChoice('unit')
+            }
+          />
+        ) : null}
       </View>
 
-      {servingChoice === 'serving' && (
+      {householdServing ? (
         <Text style={styles.servingExplanation}>
-          One serving uses the USDA serving size:{' '}
-          {formatNumber(food.servingSize)}{' '}
-          {food.servingUnit}.
+          USDA measure: {householdServing.label} ={' '}
+          {roundMacro(householdServing.gramWeight)} g
         </Text>
-      )}
+      ) : null}
 
       {nutrition ? (
         <View style={styles.nutritionPreview}>
@@ -2003,6 +2572,37 @@ function SelectedFoodCard({
         </Text>
       </Pressable>
     </View>
+  );
+}
+
+type AutoUnitButtonProps = {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+};
+
+function AutoUnitButton({
+  label,
+  active,
+  onPress,
+}: AutoUnitButtonProps) {
+  return (
+    <Pressable
+      style={[
+        styles.autoUnitButton,
+        active && styles.autoUnitButtonActive,
+      ]}
+      onPress={onPress}
+    >
+      <Text
+        style={[
+          styles.autoUnitButtonText,
+          active && styles.autoUnitButtonTextActive,
+        ]}
+      >
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -2105,10 +2705,227 @@ function FormInput({
   );
 }
 
+function parseVoiceFoodText(text: string): {
+  meal: MealType | null;
+  foods: string[];
+} {
+  let normalized = text
+    .trim()
+    .toLowerCase()
+    .replace(/[.!?]/g, '')
+    .replace(/\bplease\b/g, '')
+    .replace(/\blog\b/g, '')
+    .replace(/\badd\b/g, '')
+    .replace(/\bi (?:ate|had)\b/g, '')
+    .replace(/\bfor me\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  let meal: MealType | null = null;
+
+  const mealMatchers: Array<[RegExp, MealType]> = [
+    [/\bfor breakfast\b|\bbreakfast\b/, 'Breakfast'],
+    [/\bfor lunch\b|\blunch\b/, 'Lunch'],
+    [/\bfor dinner\b|\bdinner\b|\bsupper\b/, 'Dinner'],
+    [/\bfor (?:a )?snack\b|\bsnacks?\b/, 'Snacks'],
+  ];
+
+  for (const [pattern, mealType] of mealMatchers) {
+    if (pattern.test(normalized)) {
+      meal = mealType;
+      normalized = normalized.replace(pattern, '').trim();
+      break;
+    }
+  }
+
+  normalized = normalized
+    .replace(/\bto my\b/g, '')
+    .replace(/\bmy\b/g, '')
+    .replace(/\bmeal\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const foods = normalized
+    .split(/\s*,\s*|\s+\band\b\s+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  return { meal, foods };
+}
+
+function normalizeAutoServingChoice(
+  unit: string
+): 'cup' | 'g' | 'oz' | 'unit' {
+  const normalized = unit.trim().toLowerCase();
+
+  if (
+    normalized === 'g' ||
+    normalized === 'gram' ||
+    normalized === 'grams'
+  ) {
+    return 'g';
+  }
+
+  if (
+    normalized === 'oz' ||
+    normalized === 'ounce' ||
+    normalized === 'ounces'
+  ) {
+    return 'oz';
+  }
+
+  if (
+    normalized === 'cup' ||
+    normalized === 'cups'
+  ) {
+    return 'cup';
+  }
+
+  return 'unit';
+}
+
+function getAutoServingLabel(
+  choice: 'cup' | 'g' | 'oz' | 'unit'
+) {
+  if (choice === 'cup') return 'cup';
+  if (choice === 'g') return 'g';
+  if (choice === 'oz') return 'oz';
+  return 'unit';
+}
+
+function canConvertAutomaticServing(
+  choice: 'cup' | 'g' | 'oz' | 'unit',
+  basis: NutritionBasis
+) {
+  const basisChoice =
+    normalizeAutoServingChoice(basis.servingUnit);
+
+  if (choice === basisChoice) {
+    return true;
+  }
+
+  if (
+    (choice === 'g' && basisChoice === 'oz') ||
+    (choice === 'oz' && basisChoice === 'g')
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function getAutomaticServingMultiplier(
+  amount: number,
+  choice: 'cup' | 'g' | 'oz' | 'unit',
+  basis: NutritionBasis
+): number | null {
+  const basisChoice =
+    normalizeAutoServingChoice(basis.servingUnit);
+
+  if (choice === basisChoice) {
+    return amount / basis.servingSize;
+  }
+
+  if (choice === 'g' && basisChoice === 'oz') {
+    const basisGrams =
+      basis.servingSize * OUNCES_TO_GRAMS;
+
+    return amount / basisGrams;
+  }
+
+  if (choice === 'oz' && basisChoice === 'g') {
+    const amountGrams =
+      amount * OUNCES_TO_GRAMS;
+
+    return amountGrams / basis.servingSize;
+  }
+
+  /*
+   * Cups and individual units cannot be converted safely to weight
+   * unless the food source provides a known weight for that serving.
+   * Avoid inaccurate volume-to-weight guesses.
+   */
+  return null;
+}
+
+function servingOptionText(
+  option: FoodServingOption
+) {
+  return `${option.label} ${option.unit}`.toLowerCase();
+}
+
+function getHouseholdChoiceType(
+  option: FoodServingOption
+): 'cup' | 'unit' {
+  const text = servingOptionText(option);
+
+  if (
+    text.includes('cup') ||
+    text.includes('c ')
+  ) {
+    return 'cup';
+  }
+
+  return 'unit';
+}
+
+function findServingOptionForChoice(
+  options: FoodServingOption[],
+  choice: ServingChoice
+): FoodServingOption | null {
+  if (choice !== 'cup' && choice !== 'unit') {
+    return null;
+  }
+
+  if (choice === 'cup') {
+    return (
+      options.find((option) => {
+        const text = servingOptionText(option);
+
+        return (
+          text.includes('cup') ||
+          /\bcup\b/.test(text)
+        );
+      }) ?? null
+    );
+  }
+
+  const excludedWords = [
+    'cup',
+    'tbsp',
+    'tablespoon',
+    'tsp',
+    'teaspoon',
+    'ml',
+    'liter',
+    'fluid ounce',
+  ];
+
+  return (
+    options.find((option) => {
+      const text = servingOptionText(option);
+
+      return !excludedWords.some((word) =>
+        text.includes(word)
+      );
+    }) ?? null
+  );
+}
+
+function getPreferredHouseholdServing(
+  options: FoodServingOption[]
+) {
+  return (
+    findServingOptionForChoice(options, 'cup') ??
+    findServingOptionForChoice(options, 'unit')
+  );
+}
+
 function convertAmountToGrams(
   amount: number,
   servingChoice: ServingChoice,
-  food: FoodSearchResult
+  food: FoodSearchResult,
+  householdServing: FoodServingOption | null = null
 ) {
   if (servingChoice === 'g') {
     return amount;
@@ -2116,6 +2933,17 @@ function convertAmountToGrams(
 
   if (servingChoice === 'oz') {
     return amount * OUNCES_TO_GRAMS;
+  }
+
+  if (
+    householdServing &&
+    householdServing.gramWeight > 0
+  ) {
+    return (
+      amount *
+      householdServing.gramWeight /
+      householdServing.amount
+    );
   }
 
   const servingSize = Number(food.servingSize);
@@ -2139,10 +2967,6 @@ function convertAmountToGrams(
     }
   }
 
-  /*
-   * If USDA does not provide a convertible serving,
-   * use 100 g as one serving.
-   */
   return amount * 100;
 }
 
@@ -2576,7 +3400,7 @@ const styles = StyleSheet.create({
   modalContent: {
     padding: 24,
     paddingTop: 40,
-    paddingBottom: 60,
+    paddingBottom: 260,
   },
 
   modalTitle: {
@@ -2681,6 +3505,212 @@ const styles = StyleSheet.create({
     color: '#557063',
     fontSize: 13,
     fontWeight: '800',
+  },
+
+  voiceSection: {
+    marginTop: 4,
+  },
+
+  voiceHelpText: {
+    color: '#6D7972',
+    fontSize: 13,
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+
+  voiceInput: {
+    minHeight: 110,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    lineHeight: 22,
+    color: '#17211C',
+    borderWidth: 1,
+    borderColor: '#DCE4DF',
+  },
+
+  voiceParseButton: {
+    backgroundColor: '#2D6B48',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+
+  voiceParseButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '900',
+  },
+
+  voiceStatus: {
+    color: '#557063',
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '700',
+    marginTop: 14,
+  },
+
+  voiceFoodCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E7E4',
+  },
+
+  voiceFoodInfo: {
+    flex: 1,
+  },
+
+  voiceFoodName: {
+    color: '#17211C',
+    fontSize: 15,
+    fontWeight: '900',
+    textTransform: 'capitalize',
+  },
+
+  voiceFoodHint: {
+    color: '#6D7972',
+    fontSize: 11,
+    marginTop: 4,
+  },
+
+  voiceFoodArrow: {
+    color: '#2D6B48',
+    fontSize: 28,
+    fontWeight: '700',
+  },
+
+  autoFoodSection: {
+    marginTop: 2,
+  },
+
+  readOnlyFoodCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    borderWidth: 1,
+    borderColor: '#E2E7E4',
+  },
+
+  readOnlyFoodName: {
+    color: '#17211C',
+    fontSize: 16,
+    fontWeight: '800',
+    lineHeight: 22,
+  },
+
+  readOnlyFoodSource: {
+    color: '#2D6B48',
+    fontSize: 11,
+    fontWeight: '800',
+    marginTop: 5,
+  },
+
+  amountInputFull: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#17211C',
+    borderWidth: 1,
+    borderColor: '#E2E7E4',
+  },
+
+  autoUnitSelector: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+  },
+
+  autoUnitButton: {
+    width: '48%',
+    backgroundColor: '#EDF1EF',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+
+  autoUnitButtonActive: {
+    backgroundColor: '#2D6B48',
+  },
+
+  autoUnitButtonText: {
+    color: '#557063',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+
+  autoUnitButtonTextActive: {
+    color: '#FFFFFF',
+  },
+
+  conversionWarning: {
+    backgroundColor: '#FFF4E5',
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 10,
+  },
+
+  conversionWarningText: {
+    color: '#8A5A00',
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '700',
+  },
+
+  amountUnitRow: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'stretch',
+  },
+
+  amountInput: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#17211C',
+    borderWidth: 1,
+    borderColor: '#E2E7E4',
+  },
+
+  unitCard: {
+    minWidth: 110,
+    backgroundColor: '#EDF4EF',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#DCE4DF',
+  },
+
+  unitCardText: {
+    color: '#2D6B48',
+    fontSize: 14,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+
+  autoHelpText: {
+    color: '#6D7972',
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 9,
   },
 
   inputLabel: {

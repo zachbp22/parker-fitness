@@ -8,9 +8,12 @@
     "scheme": "parkerfitness",
     "userInterfaceStyle": "automatic",
     "ios": {
-  "supportsTablet": true,
-  "bundleIdentifier": "com.zachbp22.parkerfitness"
-},
+      "supportsTablet": true,
+      "bundleIdentifier": "com.zachbp22.parkerfitness",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
