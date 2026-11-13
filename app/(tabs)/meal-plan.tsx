@@ -991,6 +991,285 @@ export default function MealPlanScreen() {
     );
   }
 
+  function clonePlannedItems(
+    sourceItems: PlannedMeal[],
+    dateOffsetDays: number,
+    preserveSharing: boolean
+  ) {
+    const itemIdMap = new Map<string, string>();
+    const sharedMealIdMap = new Map<string, string>();
+
+    sourceItems.forEach((item) => {
+      itemIdMap.set(item.id, createId());
+
+      if (
+        preserveSharing &&
+        item.sharedMealId &&
+        !sharedMealIdMap.has(item.sharedMealId)
+      ) {
+        sharedMealIdMap.set(
+          item.sharedMealId,
+          createId()
+        );
+      }
+    });
+
+    return sourceItems.map((item) => {
+      const copied: PlannedMeal = {
+        ...item,
+        id: itemIdMap.get(item.id) ?? createId(),
+        date: addDays(item.date, dateOffsetDays),
+        loggedAt: undefined,
+      };
+
+      if (preserveSharing && item.sharedMealId) {
+        copied.sharedMealId =
+          sharedMealIdMap.get(item.sharedMealId);
+
+        copied.sharedSourceItemId =
+          item.sharedSourceItemId
+            ? itemIdMap.get(item.sharedSourceItemId)
+            : undefined;
+      } else {
+        copied.sharedMealId = undefined;
+        copied.sharedMealName = undefined;
+        copied.sharedSourceItemId = undefined;
+      }
+
+      return copied;
+    });
+  }
+
+  function copyPreviousWeek() {
+    const previousWeekStart = addDays(
+      weekStart,
+      -7
+    );
+
+    const sourceDates = new Set(
+      Array.from({ length: 7 }, (_, index) =>
+        addDays(previousWeekStart, index)
+      )
+    );
+
+    const currentDates = new Set(weekDates);
+
+    const sourceItems = plannedMeals.filter(
+      (item) => sourceDates.has(item.date)
+    );
+
+    if (sourceItems.length === 0) {
+      Alert.alert(
+        'Nothing to copy',
+        'There are no planned foods in the previous week.'
+      );
+      return;
+    }
+
+    const existingCount = plannedMeals.filter(
+      (item) => currentDates.has(item.date)
+    ).length;
+
+    const copyIntoWeek = (replaceExisting: boolean) => {
+      const copiedItems = clonePlannedItems(
+        sourceItems,
+        7,
+        true
+      );
+
+      setPlannedMeals((current) => {
+        const base = replaceExisting
+          ? current.filter(
+              (item) => !currentDates.has(item.date)
+            )
+          : current;
+
+        return [...base, ...copiedItems];
+      });
+
+      Alert.alert(
+        'Week copied',
+        `${sourceItems.length} planned food${
+          sourceItems.length === 1 ? '' : 's'
+        } copied into this week for the household.`
+      );
+    };
+
+    if (existingCount > 0) {
+      Alert.alert(
+        'This week already has plans',
+        'Do you want to add last week to the existing plan or replace this week first?',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+          {
+            text: 'Add',
+            onPress: () => copyIntoWeek(false),
+          },
+          {
+            text: 'Replace',
+            style: 'destructive',
+            onPress: () => copyIntoWeek(true),
+          },
+        ]
+      );
+
+      return;
+    }
+
+    copyIntoWeek(false);
+  }
+
+  function copyPreviousDay(date: string) {
+    const sourceDate = addDays(date, -1);
+
+    const sourceItems = plannedMeals.filter(
+      (item) =>
+        item.profileId === activeProfile &&
+        item.date === sourceDate
+    );
+
+    if (sourceItems.length === 0) {
+      Alert.alert(
+        'Nothing to copy',
+        `${formatWeekday(sourceDate)} has no planned foods for ${
+          currentProfile?.name ?? 'this profile'
+        }.`
+      );
+      return;
+    }
+
+    const existingItems = plannedMeals.filter(
+      (item) =>
+        item.profileId === activeProfile &&
+        item.date === date
+    );
+
+    const copyIntoDay = (replaceExisting: boolean) => {
+      const copiedItems = clonePlannedItems(
+        sourceItems,
+        1,
+        false
+      );
+
+      setPlannedMeals((current) => {
+        const base = replaceExisting
+          ? current.filter(
+              (item) =>
+                !(
+                  item.profileId === activeProfile &&
+                  item.date === date
+                )
+            )
+          : current;
+
+        return [...base, ...copiedItems];
+      });
+    };
+
+    if (existingItems.length > 0) {
+      Alert.alert(
+        'Day already has plans',
+        `Add ${formatWeekday(sourceDate)} to this day or replace the current plan?`,
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+          {
+            text: 'Add',
+            onPress: () => copyIntoDay(false),
+          },
+          {
+            text: 'Replace',
+            style: 'destructive',
+            onPress: () => copyIntoDay(true),
+          },
+        ]
+      );
+
+      return;
+    }
+
+    copyIntoDay(false);
+  }
+
+  function repeatMealTomorrow(
+    date: string,
+    meal: MealType
+  ) {
+    const sourceItems = plannedMeals.filter(
+      (item) =>
+        item.profileId === activeProfile &&
+        item.date === date &&
+        item.meal === meal
+    );
+
+    if (sourceItems.length === 0) {
+      return;
+    }
+
+    const targetDate = addDays(date, 1);
+
+    const existingItems = plannedMeals.filter(
+      (item) =>
+        item.profileId === activeProfile &&
+        item.date === targetDate &&
+        item.meal === meal
+    );
+
+    const copyMeal = (replaceExisting: boolean) => {
+      const copiedItems = clonePlannedItems(
+        sourceItems,
+        1,
+        false
+      );
+
+      setPlannedMeals((current) => {
+        const base = replaceExisting
+          ? current.filter(
+              (item) =>
+                !(
+                  item.profileId === activeProfile &&
+                  item.date === targetDate &&
+                  item.meal === meal
+                )
+            )
+          : current;
+
+        return [...base, ...copiedItems];
+      });
+    };
+
+    if (existingItems.length > 0) {
+      Alert.alert(
+        `${meal} already planned`,
+        `${formatWeekday(targetDate)} already has ${meal.toLowerCase()} foods. Add these too or replace that meal?`,
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+          {
+            text: 'Add',
+            onPress: () => copyMeal(false),
+          },
+          {
+            text: 'Replace',
+            style: 'destructive',
+            onPress: () => copyMeal(true),
+          },
+        ]
+      );
+
+      return;
+    }
+
+    copyMeal(false);
+  }
+
   function toggleGroceryItem(id: string) {
     setGroceryChecked((current) => ({
       ...current,
@@ -1147,14 +1426,27 @@ export default function MealPlanScreen() {
         </Pressable>
       </View>
 
-      <Pressable
-        style={styles.thisWeekButton}
-        onPress={() => setWeekStart(getMonday(getTodayDate()))}
-      >
-        <Text style={styles.thisWeekButtonText}>
-          Return to This Week
-        </Text>
-      </Pressable>
+      <View style={styles.weekUtilityRow}>
+        <Pressable
+          style={styles.weekUtilityButton}
+          onPress={() =>
+            setWeekStart(getMonday(getTodayDate()))
+          }
+        >
+          <Text style={styles.weekUtilityButtonText}>
+            This Week
+          </Text>
+        </Pressable>
+
+        <Pressable
+          style={styles.weekUtilityButton}
+          onPress={copyPreviousWeek}
+        >
+          <Text style={styles.weekUtilityButtonText}>
+            Copy Last Week
+          </Text>
+        </Pressable>
+      </View>
 
       <Pressable
         style={styles.groceryButton}
@@ -1186,6 +1478,8 @@ export default function MealPlanScreen() {
           onDelete={deletePlannedMeal}
           onLogMeal={logPlannedMeal}
           onShareMeal={openSharedMeal}
+          onCopyPreviousDay={copyPreviousDay}
+          onRepeatMealTomorrow={repeatMealTomorrow}
         />
       ))}
     </ScrollView>
@@ -1841,6 +2135,11 @@ type DayCardProps = {
   onDelete: (id: string) => void;
   onLogMeal: (date: string, meal: MealType) => void;
   onShareMeal: (date: string, meal: MealType) => void;
+  onCopyPreviousDay: (date: string) => void;
+  onRepeatMealTomorrow: (
+    date: string,
+    meal: MealType
+  ) => void;
 };
 
 function DayCard({
@@ -1851,16 +2150,29 @@ function DayCard({
   onDelete,
   onLogMeal,
   onShareMeal,
+  onCopyPreviousDay,
+  onRepeatMealTomorrow,
 }: DayCardProps) {
   return (
     <View style={styles.dayCard}>
       <View style={styles.dayHeader}>
-        <Text style={styles.dayName}>
-          {formatWeekday(date)}
-        </Text>
-        <Text style={styles.dayDate}>
-          {formatShortDate(date)}
-        </Text>
+        <View>
+          <Text style={styles.dayName}>
+            {formatWeekday(date)}
+          </Text>
+          <Text style={styles.dayDate}>
+            {formatShortDate(date)}
+          </Text>
+        </View>
+
+        <Pressable
+          style={styles.copyDayButton}
+          onPress={() => onCopyPreviousDay(date)}
+        >
+          <Text style={styles.copyDayButtonText}>
+            Copy Previous Day
+          </Text>
+        </Pressable>
       </View>
 
       <DayPlannedTotals
@@ -1889,6 +2201,9 @@ function DayCard({
             onDelete={onDelete}
             onLogMeal={() => onLogMeal(date, meal)}
             onShareMeal={() => onShareMeal(date, meal)}
+            onRepeatTomorrow={() =>
+              onRepeatMealTomorrow(date, meal)
+            }
           />
         );
       })}
@@ -1904,6 +2219,7 @@ type MealPlannerRowProps = {
   onDelete: (id: string) => void;
   onLogMeal: () => void;
   onShareMeal: () => void;
+  onRepeatTomorrow: () => void;
 };
 
 function MealPlannerRow({
@@ -1913,6 +2229,7 @@ function MealPlannerRow({
   onDelete,
   onLogMeal,
   onShareMeal,
+  onRepeatTomorrow,
 }: MealPlannerRowProps) {
   const mealCalories = Math.round(
     items.reduce(
@@ -2004,21 +2321,32 @@ function MealPlannerRow({
       </Pressable>
 
       {items.length > 0 ? (
-        <Pressable
-          style={[
-            styles.logMealButton,
-            unloggedCount === 0 &&
-              styles.logMealButtonDisabled,
-          ]}
-          onPress={onLogMeal}
-          disabled={unloggedCount === 0}
-        >
-          <Text style={styles.logMealButtonText}>
-            {unloggedCount === 0
-              ? `${meal} Logged`
-              : `Log ${meal} (${unloggedCount})`}
-          </Text>
-        </Pressable>
+        <>
+          <Pressable
+            style={[
+              styles.logMealButton,
+              unloggedCount === 0 &&
+                styles.logMealButtonDisabled,
+            ]}
+            onPress={onLogMeal}
+            disabled={unloggedCount === 0}
+          >
+            <Text style={styles.logMealButtonText}>
+              {unloggedCount === 0
+                ? `${meal} Logged`
+                : `Log ${meal} (${unloggedCount})`}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.repeatMealButton}
+            onPress={onRepeatTomorrow}
+          >
+            <Text style={styles.repeatMealButtonText}>
+              ↻ Repeat Tomorrow
+            </Text>
+          </Pressable>
+        </>
       ) : null}
 
       <Pressable
@@ -2835,17 +3163,26 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
 
-  thisWeekButton: {
-    alignSelf: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    marginBottom: 8,
+  weekUtilityRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginVertical: 10,
   },
 
-  thisWeekButtonText: {
+  weekUtilityButton: {
+    flex: 1,
+    backgroundColor: '#EDF4EF',
+    borderRadius: 12,
+    paddingVertical: 11,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#DDE7E1',
+  },
+
+  weekUtilityButtonText: {
     color: '#2D6B48',
-    fontSize: 13,
-    fontWeight: '800',
+    fontSize: 12,
+    fontWeight: '900',
   },
 
   groceryButton: {
@@ -3130,9 +3467,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 12,
     paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#E9ECEA',
+  },
+
+  copyDayButton: {
+    backgroundColor: '#EDF4EF',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+
+  copyDayButtonText: {
+    color: '#2D6B48',
+    fontSize: 10,
+    fontWeight: '900',
   },
 
   dayName: {
@@ -3303,6 +3654,22 @@ const styles = StyleSheet.create({
   logMealButtonText: {
     color: '#FFFFFF',
     fontSize: 13,
+    fontWeight: '900',
+  },
+
+  repeatMealButton: {
+    borderWidth: 1,
+    borderColor: '#D7E4DC',
+    borderRadius: 11,
+    paddingVertical: 10,
+    alignItems: 'center',
+    marginTop: 8,
+    backgroundColor: '#F8FAF9',
+  },
+
+  repeatMealButtonText: {
+    color: '#557063',
+    fontSize: 12,
     fontWeight: '900',
   },
 

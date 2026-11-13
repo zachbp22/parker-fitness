@@ -38,8 +38,7 @@ import {
   getCurrentUserCloudProfile,
   supabase,
 } from '@/services/supabase';
-import { useFocusEffect } from '@react-navigation/native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
@@ -2016,7 +2015,7 @@ function ExerciseCard({
     <Text
       style={styles.previousPerformance}
     >
-      Previous: {exercise.previousWeight} lb ×{' '}
+      Previous: {exercise.previousWeight} lb Ã—{' '}
       {exercise.previousReps} reps
     </Text>
   )}
@@ -2026,7 +2025,7 @@ function ExerciseCard({
       style={styles.suggestedPerformance}
     >
       {exercise.progressionStatus === 'increase'
-        ? `Ready to increase → ${exercise.suggestedWeight} lb`
+        ? `Ready to increase â†’ ${exercise.suggestedWeight} lb`
         : `Hold at ${exercise.suggestedWeight} lb`}
     </Text>
   )}
@@ -2150,7 +2149,7 @@ function ExerciseCard({
                 ]}
               >
                 {workoutSet.completed
-                  ? '✓'
+                  ? 'âœ“'
                   : ''}
               </Text>
             </Pressable>
@@ -2218,7 +2217,7 @@ const todaysWorkout =
             styles.summaryCheckText
           }
         >
-          ✓
+          âœ“
         </Text>
       </View>
 
@@ -2239,7 +2238,7 @@ const todaysWorkout =
 {newPRs.length > 0 && (
   <View style={styles.prCard}>
     <Text style={styles.prTitle}>
-      🏆 NEW PERSONAL RECORD
+      ðŸ† NEW PERSONAL RECORD
     </Text>
 
     {newPRs.map((pr) => (
@@ -3236,5 +3235,6 @@ summaryCard: {
     fontWeight: '900',
   },
 });
+
 
 

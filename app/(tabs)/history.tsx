@@ -15,7 +15,7 @@ import {
   type StoredWeight,
   type StoredWorkout
 } from '@/services/storage';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -701,7 +701,7 @@ const weightRemaining =
               }
             >
               {profile.name.toUpperCase()}
-              {' • '}
+              {' â€¢ '}
               NUTRITION
             </Text>
 
@@ -843,7 +843,7 @@ const weightRemaining =
                           }
                         >
                           {expanded
-                            ? '−'
+                            ? 'âˆ’'
                             : '+'}
                         </Text>
                       </View>
@@ -1071,7 +1071,7 @@ const weightRemaining =
               }
             >
               {profile.name.toUpperCase()}
-              {' • '}
+              {' â€¢ '}
               WORKOUTS
             </Text>
 
@@ -1332,7 +1332,7 @@ const weightRemaining =
                           }
                         >
                           {expanded
-                            ? '−'
+                            ? 'âˆ’'
                             : '+'}
                         </Text>
                       </View>
@@ -1442,7 +1442,7 @@ const weightRemaining =
                                     >
                                       {set.weight ||
                                         '0'}{' '}
-                                      lb ×{' '}
+                                      lb Ã—{' '}
                                       {set.reps ||
                                         '0'}{' '}
                                       reps
@@ -1456,8 +1456,8 @@ const weightRemaining =
                                       }
                                     >
                                       {set.completed
-                                        ? '✓'
-                                        : '—'}
+                                        ? 'âœ“'
+                                        : 'â€”'}
                                     </Text>
                                   </View>
                                 )
@@ -1478,7 +1478,7 @@ const weightRemaining =
     <View style={styles.heroCard}>
       <Text style={styles.heroEyebrow}>
         {profile.name.toUpperCase()}
-        {' • '}
+        {' â€¢ '}
         WEIGHT
       </Text>
 

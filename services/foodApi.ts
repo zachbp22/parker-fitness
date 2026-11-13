@@ -16,6 +16,10 @@ export type FoodSearchResult = {
   protein: number;
   carbs: number;
   fat: number;
+  fiber?: number;
+  sugar?: number;
+  sodium?: number;
+  saturatedFat?: number;
   servingOptions?: FoodServingOption[];
 };
 
@@ -172,6 +176,37 @@ function getFat(food: USDAFood): number {
   ]);
 }
 
+function getFiber(food: USDAFood): number {
+  return getNutrientByName(food, [
+    'fiber, total dietary',
+    'dietary fiber',
+    'fiber',
+  ]);
+}
+
+function getSugar(food: USDAFood): number {
+  return getNutrientByName(food, [
+    'sugars, total including nlea',
+    'sugars, total',
+    'total sugars',
+    'sugar',
+  ]);
+}
+
+function getSodium(food: USDAFood): number {
+  return getNutrientByName(food, [
+    'sodium, na',
+    'sodium',
+  ]);
+}
+
+function getSaturatedFat(food: USDAFood): number {
+  return getNutrientByName(food, [
+    'fatty acids, total saturated',
+    'saturated fat',
+  ]);
+}
+
 function roundMacro(value: number): number {
   return Math.round(value * 10) / 10;
 }
@@ -303,6 +338,12 @@ function mapFood(
     protein: roundMacro(getProtein(food)),
     carbs: roundMacro(getCarbs(food)),
     fat: roundMacro(getFat(food)),
+    fiber: roundMacro(getFiber(food)),
+    sugar: roundMacro(getSugar(food)),
+    sodium: roundMacro(getSodium(food)),
+    saturatedFat: roundMacro(
+      getSaturatedFat(food)
+    ),
     servingOptions: buildServingOptions(food),
   };
 }

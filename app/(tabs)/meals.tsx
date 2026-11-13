@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   getCurrentUserCloudProfile,
 } from '@/services/supabase';
@@ -54,6 +55,7 @@ type EntryMode =
   | 'favorites'
   | 'search'
   | 'voice'
+  | 'recipes'
   | 'manual';
 
 type FoodItem = {
@@ -70,7 +72,34 @@ type FoodItem = {
   profileId?: ProfileId;
   source?: 'manual' | 'usda' | 'barcode';
   usdaFoodId?: string;
+  recipeId?: string;
 };
+
+type RecipeIngredient = {
+  id: string;
+  name: string;
+  servingSize: string;
+  servingUnit: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  grams?: number;
+  source: 'usda' | 'manual';
+  usdaFoodId?: string;
+};
+
+type SavedRecipe = {
+  id: string;
+  name: string;
+  servings: number;
+  ingredients: RecipeIngredient[];
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+const RECIPES_KEY = '@parker_fitness_recipes';
 
 type NutritionBasis = {
   servingSize: number;
@@ -107,6 +136,9 @@ export default function MealsScreen() {
   }>();
   const [foods, setFoods] = useState<FoodItem[]>([]);
   const [favorites, setFavorites] = useState<FavoriteFood[]>([]);
+  const [recipes, setRecipes] = useState<SavedRecipe[]>([]);
+  const [recipeServingAmounts, setRecipeServingAmounts] =
+    useState<Record<string, string>>({});
   const [storageLoaded, setStorageLoaded] =
     useState(false);
   const [favoritesLoaded, setFavoritesLoaded] =
@@ -560,6 +592,38 @@ if (savedFoods !== null) {
     autoServingChoice,
   ]);
 
+  async function refreshRecipes() {
+    try {
+      const saved = await AsyncStorage.getItem(
+        RECIPES_KEY
+      );
+
+      const parsed: SavedRecipe[] = saved
+        ? JSON.parse(saved)
+        : [];
+
+      setRecipes(parsed);
+
+      setRecipeServingAmounts((current) => {
+        const next = { ...current };
+
+        parsed.forEach((recipe) => {
+          if (!next[recipe.id]) {
+            next[recipe.id] = '1';
+          }
+        });
+
+        return next;
+      });
+    } catch (error) {
+      console.error(
+        'Unable to load saved recipes:',
+        error
+      );
+      setRecipes([]);
+    }
+  }
+
   function resetManualForm() {
     setFoodName('');
     setServingSize('');
@@ -622,6 +686,7 @@ if (savedFoods !== null) {
     resetModal();
     setSelectedMeal(meal);
     setEntryMode('recent');
+    refreshRecipes();
     setModalVisible(true);
   }
 
@@ -823,6 +888,114 @@ Alert.alert(
         },
       ]
     );
+  }
+
+  function openRecipeBuilder() {
+    setModalVisible(false);
+    router.push('/recipes');
+  }
+
+  async function addRecipeToMeal(
+    recipe: SavedRecipe
+  ) {
+    const servingsToLog = Number(
+      recipeServingAmounts[recipe.id] ?? '1'
+    );
+
+    if (
+      !Number.isFinite(servingsToLog) ||
+      servingsToLog <= 0
+    ) {
+      Alert.alert(
+        'Invalid servings',
+        'Enter how many servings you ate.'
+      );
+      return;
+    }
+
+    if (
+      !Number.isFinite(recipe.servings) ||
+      recipe.servings <= 0
+    ) {
+      Alert.alert(
+        'Invalid recipe',
+        'This recipe does not have a valid serving count.'
+      );
+      return;
+    }
+
+    const totals = calculateRecipeTotals(
+      recipe.ingredients
+    );
+
+    const perServing = {
+      calories:
+        totals.calories / recipe.servings,
+      protein:
+        totals.protein / recipe.servings,
+      carbs:
+        totals.carbs / recipe.servings,
+      fat:
+        totals.fat / recipe.servings,
+    };
+
+    const foodData: FoodItem = {
+      id: createId(),
+      name: recipe.name,
+      servingSize: formatNumber(
+        servingsToLog
+      ),
+      servingUnit:
+        servingsToLog === 1
+          ? 'serving'
+          : 'servings',
+      calories: Math.round(
+        perServing.calories *
+          servingsToLog
+      ),
+      protein: roundMacro(
+        perServing.protein *
+          servingsToLog
+      ),
+      carbs: roundMacro(
+        perServing.carbs *
+          servingsToLog
+      ),
+      fat: roundMacro(
+        perServing.fat *
+          servingsToLog
+      ),
+      meal: selectedMeal,
+      date: selectedDate,
+      profileId: activeProfile,
+      source: 'manual',
+      recipeId: recipe.id,
+    };
+
+    setFoods((currentFoods) => [
+      ...currentFoods,
+      foodData,
+    ]);
+
+    if (isSignedInProfile) {
+      try {
+        await syncFoodToCloud(foodData);
+      } catch (cloudError) {
+        console.error(
+          'Unable to sync recipe food to cloud:',
+          cloudError
+        );
+
+        Alert.alert(
+          'Food Cloud Sync Error',
+          cloudError instanceof Error
+            ? cloudError.message
+            : JSON.stringify(cloudError)
+        );
+      }
+    }
+
+    closeModal();
   }
 
   function openBarcodeScanner() {
@@ -1666,6 +1839,24 @@ closeModal();
           </Text>
         </Pressable>
 
+        <Pressable
+          style={styles.recipeBuilderButton}
+          onPress={openRecipeBuilder}
+        >
+          <View>
+            <Text style={styles.recipeBuilderLabel}>
+              SAVED RECIPES
+            </Text>
+            <Text style={styles.recipeBuilderText}>
+              Recipe Builder
+            </Text>
+          </View>
+
+          <Text style={styles.recipeBuilderArrow}>
+            ›
+          </Text>
+        </Pressable>
+
         {!isToday && (
           <Pressable
             style={styles.todayButton}
@@ -1904,6 +2095,15 @@ closeModal();
               />
 
               <EntryModeButton
+                label="Recipes"
+                active={entryMode === 'recipes'}
+                onPress={() => {
+                  refreshRecipes();
+                  setEntryMode('recipes');
+                }}
+              />
+
+              <EntryModeButton
                 label="Manual Entry"
                 active={entryMode === 'manual'}
                 onPress={() => setEntryMode('manual')}
@@ -1941,6 +2141,124 @@ closeModal();
               onAdjust={adjustReusableFood}
               onRemoveFavorite={removeFavorite}
             />
+          )}
+
+          {!editingFoodId && entryMode === 'recipes' && (
+            <View style={styles.recipeSection}>
+              <View style={styles.recipeSectionHeader}>
+                <View>
+                  <Text style={styles.resultHeading}>
+                    Saved Recipes
+                  </Text>
+                  <Text style={styles.recipeSectionHelp}>
+                    Choose how many servings you ate. Nutrition is calculated from the recipe ingredients.
+                  </Text>
+                </View>
+              </View>
+
+              <Pressable
+                style={styles.manageRecipesButton}
+                onPress={openRecipeBuilder}
+              >
+                <Text style={styles.manageRecipesButtonText}>
+                  + Create / Manage Recipes
+                </Text>
+              </Pressable>
+
+              {recipes.length === 0 ? (
+                <View style={styles.recipeEmptyCard}>
+                  <Text style={styles.recipeEmptyTitle}>
+                    No saved recipes yet
+                  </Text>
+                  <Text style={styles.recipeEmptyText}>
+                    Create a recipe first, then it will appear here for quick meal logging.
+                  </Text>
+                </View>
+              ) : (
+                recipes.map((recipe) => {
+                  const totals =
+                    calculateRecipeTotals(
+                      recipe.ingredients
+                    );
+
+                  const perServing = {
+                    calories: Math.round(
+                      totals.calories /
+                        recipe.servings
+                    ),
+                    protein: roundMacro(
+                      totals.protein /
+                        recipe.servings
+                    ),
+                    carbs: roundMacro(
+                      totals.carbs /
+                        recipe.servings
+                    ),
+                    fat: roundMacro(
+                      totals.fat /
+                        recipe.servings
+                    ),
+                  };
+
+                  return (
+                    <View
+                      key={recipe.id}
+                      style={styles.savedRecipeCard}
+                    >
+                      <Text style={styles.savedRecipeName}>
+                        {recipe.name}
+                      </Text>
+
+                      <Text style={styles.savedRecipeMeta}>
+                        {perServing.calories} cal •{' '}
+                        {perServing.protein}g P •{' '}
+                        {perServing.carbs}g C •{' '}
+                        {perServing.fat}g F per serving
+                      </Text>
+
+                      <View style={styles.recipeLogRow}>
+                        <View style={styles.recipeServingField}>
+                          <Text style={styles.recipeServingLabel}>
+                            Servings
+                          </Text>
+
+                          <TextInput
+                            style={styles.recipeServingInput}
+                            value={
+                              recipeServingAmounts[
+                                recipe.id
+                              ] ?? '1'
+                            }
+                            onChangeText={(value) =>
+                              setRecipeServingAmounts(
+                                (current) => ({
+                                  ...current,
+                                  [recipe.id]: value,
+                                })
+                              )
+                            }
+                            keyboardType="decimal-pad"
+                            placeholder="1"
+                            placeholderTextColor="#9AA39E"
+                          />
+                        </View>
+
+                        <Pressable
+                          style={styles.logRecipeButton}
+                          onPress={() =>
+                            addRecipeToMeal(recipe)
+                          }
+                        >
+                          <Text style={styles.logRecipeButtonText}>
+                            Add to {selectedMeal}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  );
+                })
+              )}
+            </View>
           )}
 
           {!editingFoodId && entryMode === 'voice' && (
@@ -2705,6 +3023,29 @@ function FormInput({
   );
 }
 
+function calculateRecipeTotals(
+  ingredients: RecipeIngredient[]
+) {
+  return ingredients.reduce(
+    (total, ingredient) => ({
+      calories:
+        total.calories + ingredient.calories,
+      protein:
+        total.protein + ingredient.protein,
+      carbs:
+        total.carbs + ingredient.carbs,
+      fat:
+        total.fat + ingredient.fat,
+    }),
+    {
+      calories: 0,
+      protein: 0,
+      carbs: 0,
+      fat: 0,
+    }
+  );
+}
+
 function parseVoiceFoodText(text: string): {
   meal: MealType | null;
   foods: string[];
@@ -3460,6 +3801,155 @@ const styles = StyleSheet.create({
 
   entryModeTextActive: {
     color: '#FFFFFF',
+  },
+
+  recipeBuilderButton: {
+    backgroundColor: '#EDF4EF',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#DDE7E1',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+
+  recipeBuilderLabel: {
+    color: '#6D7972',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+
+  recipeBuilderText: {
+    color: '#1D4A32',
+    fontSize: 15,
+    fontWeight: '900',
+    marginTop: 2,
+  },
+
+  recipeBuilderArrow: {
+    color: '#2D6B48',
+    fontSize: 26,
+    fontWeight: '800',
+  },
+
+  recipeSection: {
+    marginTop: 10,
+  },
+
+  recipeSectionHeader: {
+    marginBottom: 10,
+  },
+
+  recipeSectionHelp: {
+    color: '#6D7972',
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 4,
+  },
+
+  manageRecipesButton: {
+    backgroundColor: '#17211C',
+    borderRadius: 13,
+    paddingVertical: 13,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+
+  manageRecipesButtonText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+
+  recipeEmptyCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 15,
+    borderWidth: 1,
+    borderColor: '#E2E7E4',
+  },
+
+  recipeEmptyTitle: {
+    color: '#17211C',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+
+  recipeEmptyText: {
+    color: '#6D7972',
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 4,
+  },
+
+  savedRecipeCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 15,
+    padding: 15,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#E2E7E4',
+  },
+
+  savedRecipeName: {
+    color: '#17211C',
+    fontSize: 16,
+    fontWeight: '900',
+  },
+
+  savedRecipeMeta: {
+    color: '#6D7972',
+    fontSize: 11,
+    lineHeight: 17,
+    marginTop: 4,
+  },
+
+  recipeLogRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 10,
+    marginTop: 12,
+  },
+
+  recipeServingField: {
+    width: 94,
+  },
+
+  recipeServingLabel: {
+    color: '#557063',
+    fontSize: 10,
+    fontWeight: '900',
+    marginBottom: 5,
+  },
+
+  recipeServingInput: {
+    backgroundColor: '#F4F6F5',
+    borderRadius: 11,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    color: '#17211C',
+    fontSize: 15,
+    fontWeight: '900',
+    borderWidth: 1,
+    borderColor: '#E2E7E4',
+  },
+
+  logRecipeButton: {
+    flex: 1,
+    backgroundColor: '#2D6B48',
+    borderRadius: 11,
+    paddingVertical: 13,
+    alignItems: 'center',
+  },
+
+  logRecipeButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '900',
   },
 
   scanBarcodeButton: {
